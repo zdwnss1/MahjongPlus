@@ -1,15 +1,20 @@
 import type { EntityReferenceExpression, Primitive, ValueExpression } from '@mahjongplus/world-language';
 import type { WorldRef } from '@mahjongplus/world-model';
-import type { ProcedureToken } from './types.js';
+import type { ProcedureToken, RuntimeResponseSubmission, RuntimeResponseWindow } from './types.js';
 
 export interface EvaluationContext {
   actorId: string;
   attemptId?: string;
   actionId?: string;
+  actionEntityId?: string;
   parameters: Record<string, unknown>;
   token?: ProcedureToken;
   lastMovedEntityId?: string;
+  lastCreatedEntityId?: string;
+  lastEventId?: string;
   automaticDepth?: number;
+  window?: RuntimeResponseWindow;
+  submission?: RuntimeResponseSubmission;
 }
 
 function readPath(context: EvaluationContext, path: string): unknown {
@@ -17,9 +22,14 @@ function readPath(context: EvaluationContext, path: string): unknown {
     actorId: context.actorId,
     attemptId: context.attemptId,
     actionId: context.actionId,
+    actionEntityId: context.actionEntityId,
     params: context.parameters,
     token: context.token,
     lastMovedEntityId: context.lastMovedEntityId,
+    lastCreatedEntityId: context.lastCreatedEntityId,
+    lastEventId: context.lastEventId,
+    window: context.window,
+    submission: context.submission,
   };
   const parts = path.split('.');
   let value: unknown = roots[parts.shift() as string];
@@ -34,13 +44,24 @@ export function evaluateValue(expression: ValueExpression, context: EvaluationCo
   if (expression.kind === 'literal') return structuredClone(expression.value);
   if (expression.kind === 'context') return readPath(context, expression.path);
   if (expression.kind === 'last-moved-entity') return context.lastMovedEntityId;
+  if (expression.kind === 'last-created-entity') return context.lastCreatedEntityId;
   return expression.template.replace(/\$\{([^}]+)\}/g, (_match, path: string) => String(readPath(context, path) ?? ''));
 }
 
 export function evaluateString(expression: ValueExpression, context: EvaluationContext): string {
   const value = evaluateValue(expression, context);
-  if (typeof value !== 'string' || value.length === 0) throw new Error('Expression did not resolve to a non-empty string.');
+  if (typeof value !== 'string' || value.length === 0) {
+    throw new Error('Expression did not resolve to a non-empty string.');
+  }
   return value;
+}
+
+export function evaluateStringArray(expression: ValueExpression, context: EvaluationContext): string[] {
+  const value = evaluateValue(expression, context);
+  if (!Array.isArray(value) || value.some((entry) => typeof entry !== 'string')) {
+    throw new Error('Expression did not resolve to a string array.');
+  }
+  return [...value] as string[];
 }
 
 export function evaluateEntityRef(expression: EntityReferenceExpression, context: EvaluationContext): WorldRef {
@@ -49,7 +70,38 @@ export function evaluateEntityRef(expression: EntityReferenceExpression, context
     if (!context.lastMovedEntityId) throw new Error('No entity has moved in the current effect sequence.');
     return { kind: expression.entityKind ?? 'entity', id: context.lastMovedEntityId };
   }
+  if (expression.kind === 'last-created-entity') {
+    if (!context.lastCreatedEntityId) throw new Error('No entity has been created in the current effect sequence.');
+    return { kind: expression.entityKind ?? 'entity', id: context.lastCreatedEntityId };
+  }
+  if (expression.kind === 'window-source-entity') {
+    if (!context.window) throw new Error('No response window context is active.');
+    return { kind: expression.entityKind ?? 'tile', id: context.window.sourceEntityId };
+  }
+  if (expression.kind === 'window-source-event') {
+    if (!context.window) throw new Error('No response window context is active.');
+    return { kind: 'event', id: context.window.sourceEventId };
+  }
   return { kind: expression.entityKind, id: evaluateString(expression.id, context) };
+}
+
+export function evaluateDynamic(value: unknown, context: EvaluationContext): unknown {
+  if (Array.isArray(value)) return value.map((entry) => evaluateDynamic(entry, context));
+  if (value && typeof value === 'object') {
+    const kind = (value as Record<string, unknown>).kind;
+    if (typeof kind === 'string' && [
+      'literal',
+      'context',
+      'template',
+      'last-moved-entity',
+      'last-created-entity',
+    ].includes(kind)) {
+      return evaluateValue(value as ValueExpression, context);
+    }
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .map(([key, entry]) => [key, evaluateDynamic(entry, context)]));
+  }
+  return value;
 }
 
 export function evaluatePayload(
