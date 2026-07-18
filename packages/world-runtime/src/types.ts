@@ -42,3 +42,24 @@ export interface WorldActionReceipt {
   failures: RequirementFailure[];
   eventIds: string[];
 }
+
+export interface RuntimeResponseSubmission {
+  actorId: string;
+  actionId: string;
+  parameters: Record<string, unknown>;
+  actionEntityId: string;
+  attemptEntityId: string;
+}
+
+export interface RuntimeResponseWindow {
+  id: string;
+  definitionId: string;
+  sourceActorId: string;
+  sourceEventId: string;
+  sourceEntityId: string;
+  parentTokenId: string;
+  participants: string[];
+  submissions: Record<string, RuntimeResponseSubmission>;
+  state: 'open' | 'resolved';
+  selected: RuntimeResponseSubmission[];
+}
