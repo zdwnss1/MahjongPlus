@@ -17,6 +17,7 @@
     "test": "vitest run"
   },
   "dependencies": {
+    "@mahjongplus/world-calculus": "0.1.0",
     "@mahjongplus/world-capabilities": "0.1.0",
     "@mahjongplus/world-language": "0.1.0",
     "@mahjongplus/world-model": "0.1.0",
