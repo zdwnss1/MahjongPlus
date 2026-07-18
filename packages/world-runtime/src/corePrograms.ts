@@ -2,7 +2,7 @@ import {
   applyRewriteProgram,
   reduceEvents,
   solveFiniteDomain,
-  type CoreProgramCollection,
+  type CoreProgramBundle,
   type EventReducerDefinition,
   type FiniteDomainProgram,
   type FiniteDomainResult,
@@ -39,11 +39,13 @@ export class CoreProgramRuntime {
   private readonly rewrites: Map<string, RewriteProgram>;
   private reducerStates: Record<string, unknown>;
 
-  constructor(programs: CoreProgramCollection | undefined) {
-    const normalized: CoreProgramCollection = programs ?? { constraints: [], reducers: [], rewrites: [] };
-    this.constraints = new Map(normalized.constraints.map((program) => [program.id, clone(program)]));
-    this.reducers = new Map(normalized.reducers.map((program) => [program.id, clone(program)]));
-    this.rewrites = new Map(normalized.rewrites.map((program) => [program.id, clone(program)]));
+  constructor(programs: CoreProgramBundle | undefined) {
+    const constraints = programs?.constraints ?? [];
+    const reducers = programs?.reducers ?? [];
+    const rewrites = programs?.rewrites ?? [];
+    this.constraints = new Map(constraints.map((program) => [program.id, clone(program)]));
+    this.reducers = new Map(reducers.map((program) => [program.id, clone(program)]));
+    this.rewrites = new Map(rewrites.map((program) => [program.id, clone(program)]));
     this.reducerStates = Object.fromEntries(
       [...this.reducers.values()].map((program) => [program.id, clone(program.initialState)]),
     );
