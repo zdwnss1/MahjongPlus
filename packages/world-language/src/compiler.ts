@@ -55,6 +55,7 @@ function validateEffect(
   effect: EffectDefinition,
   procedures: Map<string, ProcedureDefinition>,
   responseWindows: Set<string>,
+  rewriteIds: Set<string>,
 ): void {
   if (effect.kind === 'procedure.spawn') {
     const procedure = procedures.get(effect.procedureId);
@@ -71,6 +72,9 @@ function validateEffect(
   }
   if (effect.kind === 'response-window.open' && !responseWindows.has(effect.definitionId)) {
     throw new Error(`Unknown response window definition: ${effect.definitionId}`);
+  }
+  if (effect.kind === 'core.rewrite' && !rewriteIds.has(effect.programId)) {
+    throw new Error(`Unknown core rewrite program: ${effect.programId}`);
   }
 }
 
@@ -93,6 +97,8 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
   corePrograms.reducers ??= [];
   corePrograms.rewrites ??= [];
   validateCorePrograms(corePrograms);
+  const constraintIds = new Set(corePrograms.constraints.map((program) => program.id));
+  const rewriteIds = new Set(corePrograms.rewrites.map((program) => program.id));
 
   const requirements = structuredClone(source.capabilities ?? []);
   const requirementKeys = new Set<string>();
@@ -133,7 +139,7 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
     const nodes = new Set(procedure.nodes.map((node) => node.id));
     if (!nodes.has(procedure.entryNodeId)) throw new Error(`Procedure ${procedure.id} has an invalid entry node.`);
     for (const node of procedure.nodes) {
-      for (const effect of node.onEnter ?? []) validateEffect(effect, procedures, responseWindowIds);
+      for (const effect of node.onEnter ?? []) validateEffect(effect, procedures, responseWindowIds, rewriteIds);
     }
   }
 
@@ -154,9 +160,9 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
       }
     }
     for (const effects of Object.values(window.selectionEffects)) {
-      for (const effect of effects) validateEffect(effect, procedures, responseWindowIds);
+      for (const effect of effects) validateEffect(effect, procedures, responseWindowIds, rewriteIds);
     }
-    for (const effect of window.noSelectionEffects) validateEffect(effect, procedures, responseWindowIds);
+    for (const effect of window.noSelectionEffects) validateEffect(effect, procedures, responseWindowIds, rewriteIds);
   }
 
   for (const action of source.actions) {
@@ -170,8 +176,11 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
           throw new Error(`Action ${action.id} references unknown procedure node ${requirement.nodeId}.`);
         }
       }
+      if (requirement.kind === 'core.constraint' && !constraintIds.has(requirement.programId)) {
+        throw new Error(`Action ${action.id} references unknown core constraint ${requirement.programId}.`);
+      }
     }
-    for (const effect of action.effects) validateEffect(effect, procedures, responseWindowIds);
+    for (const effect of action.effects) validateEffect(effect, procedures, responseWindowIds, rewriteIds);
   }
   for (const item of source.bootstrap) {
     if (!procedures.has(item.procedureId)) throw new Error(`Bootstrap references unknown procedure ${item.procedureId}.`);
