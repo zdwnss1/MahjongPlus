@@ -3,7 +3,7 @@
 A playable networked riichi mahjong prototype built around two principles:
 
 1. **Reality is the minimum feature set.** Any physical-table action can be attempted at any time. The authoritative server adjudicates it, executes it, rejects it, or applies a constitutional penalty.
-2. **Every authority boundary is modular.** Physical tiles, random streams, action attempts, adjudication, penalties, rule modules, engine adaptation, projections, and governance have separate interfaces.
+2. **Every authority boundary is modular.** Physical tiles, random streams, action attempts, adjudication, penalties, rule modules, engine adaptation, projections, governance, spatial zones, and entity bindings have separate interfaces.
 
 ## Implemented
 
@@ -20,14 +20,22 @@ A playable networked riichi mahjong prototype built around two principles:
 - Physical tile instance IDs rather than face strings alone.
 - Deterministic wall generation and named random substreams.
 - Modular tile-set definitions supporting extra copies and multiple red fives; the normal profiles still use a standard riichi set.
+- Typed entity relation graph linking tiles, actions, events, effects, zones, rules, and bindings.
+- Active attachments hosted by any entity, with event matching, visibility, lifetime, and charge count.
+- Tile appearance separated from scoring contribution: any tile may be red or otherwise styled, while contextual score contribution may be positive, zero, or negative.
+- Four-sided physical wall topology with two-high stacks, dice-selected opening, configurable side distribution, partial-stack policy, and exact dead-wall interval.
+- Spatial river slots that retain position and provenance after a discard is claimed.
 - Rule-module adjudication interface reserved for executable MRIR modules.
 - Responsive React table UI, tests, CI, and Docker build.
 
 ## Current rule limitation
 
-Natural-language proposals are still stored as non-executable artifacts. The runtime interfaces now exist, but typed MRIR, whole-pack conflict proof, and sandboxed Wasm are not connected yet. See `docs/rule-engine-roadmap.md`.
+Natural-language proposals are still stored as non-executable artifacts. The runtime interfaces now exist, but typed MRIR, whole-pack conflict proof, and sandboxed Wasm are not connected yet. See:
 
-The current normal-game adapter still delegates standard Japanese-mahjong progression and scoring to Kobalab. The next kernel milestone is to vendor/fork that core behind the same interfaces so custom modules can alter draw flow, shape interpretation, scoring, and termination without two competing sources of truth.
+- `docs/physical-table-model.md`
+- `docs/rule-engine-roadmap.md`
+
+The current normal-game adapter still delegates standard Japanese-mahjong progression and scoring to Kobalab. The next kernel milestone is to vendor/fork that core behind the same interfaces so custom modules can alter wall construction, draw flow, entity relations, shape interpretation, scoring, and termination without two competing sources of truth.
 
 ## Run locally
 
@@ -53,7 +61,7 @@ npm test
 npm run build
 ```
 
-The automated suite includes a complete AI east match, action adjudication, false-win penalties, stale attempts, rule-module overrides, arbitrary tile multiplicity, and deterministic walls.
+The automated suite includes a complete AI east match, action adjudication, false-win penalties, stale attempts, rule-module overrides, arbitrary tile multiplicity, deterministic walls, entity attachments, variable physical wall openings, contextual negative han, and river provenance.
 
 ## License
 
