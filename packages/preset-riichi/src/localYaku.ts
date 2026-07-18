@@ -123,16 +123,17 @@ export function stoneOnThreeYearsFixture(options: StoneOnThreeYearsOptions = {})
       compare('eq', variable('winAccepted'), literal(true)),
       compare('eq', path(win, 'closed'), literal(true)),
       contains(literal(allowedContexts), path(win, 'context')),
-      quantify('exists', events, 'event', all(
-        compare('eq', path(variable('event'), 'type'), literal('double-riichi.committed')),
-        compare('eq', path(variable('event'), 'actorId'), path(win, 'actorId')),
-        compare('lt', path(variable('event'), 'index'), path(win, 'index')),
+      quantify('exists', events, 'riichi', all(
+        compare('eq', path(variable('riichi'), 'type'), literal('double-riichi.committed')),
+        compare('eq', path(variable('riichi'), 'actorId'), path(win, 'actorId')),
+        compare('lt', path(variable('riichi'), 'index'), path(win, 'index')),
+        not(quantify('exists', events, 'cancel', all(
+          compare('eq', path(variable('cancel'), 'type'), literal('riichi.cancelled')),
+          compare('eq', path(variable('cancel'), 'actorId'), path(win, 'actorId')),
+          compare('gt', path(variable('cancel'), 'index'), path(variable('riichi'), 'index')),
+          compare('lt', path(variable('cancel'), 'index'), path(win, 'index')),
+        ))),
       )),
-      not(quantify('exists', events, 'event', all(
-        compare('eq', path(variable('event'), 'type'), literal('riichi.cancelled')),
-        compare('eq', path(variable('event'), 'actorId'), path(win, 'actorId')),
-        compare('lt', path(variable('event'), 'index'), path(win, 'index')),
-      ))),
     )),
     award: {
       contributions: [
@@ -176,7 +177,6 @@ export function thirteenMisfitsFixture(options: ThirteenMisfitsOptions = {}): Lo
     all(compare('eq', variable('dealer'), literal(false)), compare('eq', variable('phase'), literal('after-first-draw'))),
   );
   const constraints: CoreFormula[] = [
-    compare('eq', variable('winAccepted'), literal(true)),
     timing,
     compare('eq', variable('callCount'), literal(0)),
     compare('eq', aggregate('count', hand), literal(14)),
@@ -210,20 +210,22 @@ export function thirteenMisfitsFixture(options: ThirteenMisfitsOptions = {}): Lo
 }
 
 export interface EightConsecutiveWinsOptions {
+  trackedPlayerId?: string;
   resetOnDraw?: boolean;
   requireIndependentYaku?: boolean;
 }
 
 export function eightConsecutiveWinsFixture(options: EightConsecutiveWinsOptions = {}): LocalYakuFixture {
+  const trackedPlayerId = options.trackedPlayerId ?? 'east';
   const resetOnDraw = options.resetOnDraw ?? true;
   const requireIndependentYaku = options.requireIndependentYaku ?? true;
   const reducer: EventReducerDefinition = {
-    id: 'local.eight-consecutive-wins.reducer',
+    id: `local.eight-consecutive-wins.reducer:${trackedPlayerId}`,
     initialState: { count: 0 },
     transitions: [{
       when: all(
         compare('eq', path(variable('event'), 'type'), literal('hand.ended')),
-        compare('eq', path(variable('event'), 'winnerId'), variable('trackedPlayer')),
+        compare('eq', path(variable('event'), 'winnerId'), literal(trackedPlayerId)),
       ),
       updates: [{
         path: ['count'],
@@ -232,22 +234,22 @@ export function eightConsecutiveWinsFixture(options: EightConsecutiveWinsOptions
     }, {
       when: all(
         compare('eq', path(variable('event'), 'type'), literal('hand.ended')),
-        compare('neq', path(variable('event'), 'winnerId'), variable('trackedPlayer')),
+        compare('neq', path(variable('event'), 'winnerId'), literal(trackedPlayerId)),
       ),
       updates: [{ path: ['count'], value: literal(0) }],
     }, {
       when: all(
-        compare('eq', variable('resetOnDraw'), literal(true)),
+        compare('eq', literal(resetOnDraw), literal(true)),
         compare('eq', path(variable('event'), 'type'), literal('hand.drawn')),
       ),
       updates: [{ path: ['count'], value: literal(0) }],
     }],
   };
   return {
-    id: 'local.eight-consecutive-wins',
+    id: `local.eight-consecutive-wins:${trackedPlayerId}`,
     title: '八连庄',
     reducer,
-    eligibility: externalConstraint('local.eight-consecutive-wins.eligible', all(
+    eligibility: externalConstraint(`local.eight-consecutive-wins.eligible:${trackedPlayerId}`, all(
       compare('gte', path(variable('streak'), 'count'), literal(8)),
       any(
         compare('eq', literal(requireIndependentYaku), literal(false)),
@@ -260,7 +262,7 @@ export function eightConsecutiveWinsFixture(options: EightConsecutiveWinsOptions
         { dimension: 'limit', operation: 'set', value: 'yakuman' },
       ],
     },
-    parameters: { resetOnDraw, requireIndependentYaku },
+    parameters: { trackedPlayerId, resetOnDraw, requireIndependentYaku },
   };
 }
 
