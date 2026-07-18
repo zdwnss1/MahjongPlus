@@ -10,6 +10,19 @@ function runtime(seed = 'test-seed', extra = {}) {
   return value;
 }
 
+function passOpenWindow(value: WorldRuntime): void {
+  const window = value.openResponseWindows()[0];
+  for (const actorId of window.participants) {
+    value.attempt({
+      attemptId: `pass:${window.id}:${actorId}`,
+      actorId,
+      actionId: 'response.pass',
+      observedRevision: value.currentRevision,
+      parameters: { windowId: window.id },
+    });
+  }
+}
+
 describe('riichi world vertical slice', () => {
   it('builds, opens and deals a standard physical wall through MWIR', () => {
     const value = runtime();
@@ -32,7 +45,7 @@ describe('riichi world vertical slice', () => {
       .toEqual(right.zones.find((zone) => zone.id === 'wall.live')?.entries.map((entry) => entry.entityId));
   });
 
-  it('executes draw, discard, river placement and turn rotation through action definitions', () => {
+  it('executes draw, discard, response pass, river placement and turn rotation through definitions', () => {
     const value = runtime();
     const drawnTile = value.store.zoneEntityIds('wall.live')[0];
     const draw = value.attempt({
@@ -50,9 +63,14 @@ describe('riichi world vertical slice', () => {
     expect(discard.outcome).toBe('executed');
     expect(value.store.zoneEntityIds('river:east')).toEqual([drawnTile]);
     expect(value.store.readZone('river:east').entries[0].metadata.orientation).toBe('upright');
+    expect(value.scheduler.find('turn', 'await-response', 'east')).toBeDefined();
+    expect(value.openResponseWindows()).toHaveLength(1);
+
+    passOpenWindow(value);
     expect(value.scheduler.find('turn', 'await-draw', 'south')).toBeDefined();
     expect(value.journal.all().some((event) => event.type === 'tile.drawn' && event.objects[0]?.id === drawnTile)).toBe(true);
     expect(value.journal.all().some((event) => event.type === 'tile.discarded' && event.objects[0]?.id === drawnTile)).toBe(true);
+    expect(value.journal.all().some((event) => event.type === 'response-window.resolved')).toBe(true);
   });
 
   it('records out-of-flow actions as rejected attempts rather than hiding the action language', () => {
