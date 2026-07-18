@@ -2,7 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "baseUrl": "../..",
-    "paths": { "@mahjongplus/world-model": ["packages/world-model/src/index.ts"] }
+    "paths": {
+      "@mahjongplus/world-capabilities": ["packages/world-capabilities/src/index.ts"],
+      "@mahjongplus/world-model": ["packages/world-model/src/index.ts"]
+    }
   },
   "include": ["src"]
 }
