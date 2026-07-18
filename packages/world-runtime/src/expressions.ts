@@ -1,4 +1,9 @@
-import type { EntityReferenceExpression, Primitive, ValueExpression } from '@mahjongplus/world-language';
+import type {
+  CapabilityCallExpression,
+  EntityReferenceExpression,
+  Primitive,
+  ValueExpression,
+} from '@mahjongplus/world-language';
 import type { WorldRef } from '@mahjongplus/world-model';
 import type { ProcedureToken, RuntimeResponseSubmission, RuntimeResponseWindow } from './types.js';
 
@@ -15,6 +20,7 @@ export interface EvaluationContext {
   automaticDepth?: number;
   window?: RuntimeResponseWindow;
   submission?: RuntimeResponseSubmission;
+  invokeCapability?: (capabilityId: string, input: unknown, version?: string) => unknown;
 }
 
 function readPath(context: EvaluationContext, path: string): unknown {
@@ -40,11 +46,21 @@ function readPath(context: EvaluationContext, path: string): unknown {
   return value;
 }
 
+function evaluateCapability(expression: CapabilityCallExpression, context: EvaluationContext): unknown {
+  if (!context.invokeCapability) throw new Error(`Capability ${expression.capabilityId} is unavailable in this runtime.`);
+  return context.invokeCapability(
+    expression.capabilityId,
+    evaluateDynamic(expression.input, context),
+    expression.version,
+  );
+}
+
 export function evaluateValue(expression: ValueExpression, context: EvaluationContext): unknown {
   if (expression.kind === 'literal') return structuredClone(expression.value);
   if (expression.kind === 'context') return readPath(context, expression.path);
   if (expression.kind === 'last-moved-entity') return context.lastMovedEntityId;
   if (expression.kind === 'last-created-entity') return context.lastCreatedEntityId;
+  if (expression.kind === 'capability-call') return evaluateCapability(expression, context);
   return expression.template.replace(/\$\{([^}]+)\}/g, (_match, path: string) => String(readPath(context, path) ?? ''));
 }
 
@@ -95,6 +111,7 @@ export function evaluateDynamic(value: unknown, context: EvaluationContext): unk
       'template',
       'last-moved-entity',
       'last-created-entity',
+      'capability-call',
     ].includes(kind)) {
       return evaluateValue(value as ValueExpression, context);
     }

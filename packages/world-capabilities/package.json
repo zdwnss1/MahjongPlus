@@ -1,5 +1,5 @@
 {
-  "name": "@mahjongplus/preset-riichi",
+  "name": "@mahjongplus/world-capabilities",
   "version": "0.1.0",
   "private": true,
   "type": "module",
@@ -15,12 +15,6 @@
     "build": "tsup src/index.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
-  },
-  "dependencies": {
-    "@mahjongplus/world-capabilities": "0.1.0",
-    "@mahjongplus/world-language": "0.1.0",
-    "@mahjongplus/world-model": "0.1.0",
-    "@mahjongplus/world-runtime": "0.1.0"
   },
   "devDependencies": {
     "tsup": "^8.5.0",

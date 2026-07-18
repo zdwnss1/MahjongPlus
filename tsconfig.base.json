@@ -11,6 +11,13 @@
     "declaration": true,
     "sourceMap": true,
     "baseUrl": ".",
-    "paths": { "@mahjongplus/shared": ["packages/shared/src/index.ts"] }
+    "paths": {
+      "@mahjongplus/shared": ["packages/shared/src/index.ts"],
+      "@mahjongplus/world-model": ["packages/world-model/src/index.ts"],
+      "@mahjongplus/world-capabilities": ["packages/world-capabilities/src/index.ts"],
+      "@mahjongplus/world-language": ["packages/world-language/src/index.ts"],
+      "@mahjongplus/world-runtime": ["packages/world-runtime/src/index.ts"],
+      "@mahjongplus/preset-riichi": ["packages/preset-riichi/src/index.ts"]
+    }
   }
 }
