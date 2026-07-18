@@ -1,14 +1,23 @@
+import type { CapabilityRequirement } from '@mahjongplus/world-capabilities';
 import type { EntityRecord, RelationRecord, ZoneRecord } from '@mahjongplus/world-model';
 
 export type Primitive = string | number | boolean | null;
 export type ParameterType = 'string' | 'number' | 'boolean' | 'string[]';
+
+export interface CapabilityCallExpression {
+  kind: 'capability-call';
+  capabilityId: string;
+  version?: string;
+  input: unknown;
+}
 
 export type ValueExpression =
   | { kind: 'literal'; value: unknown }
   | { kind: 'context'; path: string }
   | { kind: 'template'; template: string }
   | { kind: 'last-moved-entity' }
-  | { kind: 'last-created-entity' };
+  | { kind: 'last-created-entity' }
+  | CapabilityCallExpression;
 
 export type EntityReferenceExpression =
   | { kind: 'entity'; entityKind: string; id: ValueExpression }
@@ -65,6 +74,12 @@ export type RequirementDefinition =
       source: EntityReferenceExpression;
       target: EntityReferenceExpression;
       relationType: string;
+      message: string;
+    }
+  | {
+      id: string;
+      kind: 'capability-constraint';
+      call: CapabilityCallExpression;
       message: string;
     };
 
@@ -134,7 +149,8 @@ export type EffectDefinition =
       sourceEntity: ValueExpression;
       parentTokenId: ValueExpression;
     }
-  | { kind: 'response-window.submit'; windowId: ValueExpression };
+  | { kind: 'response-window.submit'; windowId: ValueExpression }
+  | { kind: 'capability.expand-effects'; call: CapabilityCallExpression };
 
 export interface ActionDefinition {
   id: string;
@@ -179,6 +195,7 @@ export interface WorldSource {
   actions: ActionDefinition[];
   procedures: ProcedureDefinition[];
   responseWindows?: ResponseWindowDefinition[];
+  capabilities?: CapabilityRequirement[];
   bootstrap: BootstrapProcedure[];
   initialEvents?: InitialEventDefinition[];
   metadata?: Record<string, unknown>;
