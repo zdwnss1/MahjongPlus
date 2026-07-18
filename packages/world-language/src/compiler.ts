@@ -3,6 +3,7 @@ import {
   type CapabilityCatalogSnapshot,
   type CapabilityRequirement,
 } from '@mahjongplus/world-capabilities';
+import { validateCorePrograms } from '@mahjongplus/world-calculus';
 import { stableHash } from './canonical.js';
 import type { EffectDefinition, ProcedureDefinition, WorldImage, WorldSource } from './ast.js';
 
@@ -82,6 +83,16 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
   uniqueIds('action', source.actions);
   uniqueIds('procedure', source.procedures);
   uniqueIds('response window', source.responseWindows ?? []);
+
+  const corePrograms = structuredClone(source.corePrograms ?? {
+    constraints: [],
+    reducers: [],
+    rewrites: [],
+  });
+  corePrograms.constraints ??= [];
+  corePrograms.reducers ??= [];
+  corePrograms.rewrites ??= [];
+  validateCorePrograms(corePrograms);
 
   const requirements = structuredClone(source.capabilities ?? []);
   const requirementKeys = new Set<string>();
@@ -169,6 +180,7 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
   const normalized = structuredClone({
     ...source,
     responseWindows: source.responseWindows ?? [],
+    corePrograms,
     capabilities: requirements,
   });
   return { ...normalized, hash: stableHash(normalized) };
