@@ -1,28 +1,32 @@
 # Rule engine roadmap
 
-## Completed foundation
+The MVP records custom rules but does not yet execute natural-language rule programs. The repository now contains the physical-table and adjudication boundaries required before MRIR can safely become executable.
 
-- Open `ActionAttempt` protocol rather than a legal-action whitelist.
-- Typed `ActionReceipt`, violations, penalties, revisions, and idempotency.
-- Always-available physical action catalog.
-- Stable physical tile-instance identities.
-- Deterministic named random streams and deterministic walls.
-- Modular tile definitions supporting extra copies and extra red tiles.
-- Ordered `ActionRuleModule` boundary.
-- Frozen constitutional foul policy.
+## Implemented foundations
+
+- Open action attempts: normal engine opportunities are hints, not an authorization whitelist.
+- Revisioned, idempotent action receipts with typed violations and constitutional penalties.
+- Stable physical tile-instance IDs and configurable tile counts.
+- Deterministic named random streams and seeded walls.
+- Typed entity relation graph connecting tiles, actions, events, effects, zones, rules, and bindings.
+- Active attachments hosted by any entity, with event matching, visibility, lifetime, and charges.
+- Tile appearance separated from effective identity and scoring contribution; any tile may be red and contextual contributions may be negative.
+- Spatial river slots that retain provenance after a discard is claimed.
+- Physical four-sided wall topology with two-high stacks, dice-selected opening, configurable side distribution, exact dead-wall interval, and variable tile counts.
+- Ordered rule-module adjudication hooks.
 
 ## Next: local rule-aware riichi kernel
 
 Vendor the MIT Kobalab core into `packages/riichi-kernel` and preserve its license. Keep upstream as a test oracle. Split the local engine into:
 
-1. physical state and locations;
+1. physical state, zones, slots, and entity relations;
 2. action attempt intake;
 3. normative requirements and violations;
-4. effect proposal and resolution;
-5. atomic event commit;
-6. win-shape interpretation;
-7. yaku/fu evaluation;
-8. settlement;
+4. active binding matching;
+5. effect proposal and resolution;
+6. atomic event commit;
+7. win-shape interpretation;
+8. qualification, han, fu, limit, and settlement phases;
 9. flow and termination;
 10. projected player views.
 
@@ -35,13 +39,16 @@ Add typed expressions and subscriptions for:
 - `action.attempted`, `action.rejected`, `action.committed`;
 - `violation.committed`, `penalty.committed`;
 - draw, discard, call, riichi, kan, dora, win, settlement, hand end;
+- entity selectors and relations between tiles, actions, and events;
+- bindings with lifetime, visibility, and charges;
 - legality requirements and explicit waivers;
 - score transfer/mint/burn;
 - rule-local state with event/turn/hand/match scopes;
-- additive han, yakuman, fixed fu, minimum limit;
-- bounded flow effects such as extra draw and extra dora reveal.
+- additive or negative han, yakuman, fixed fu, minimum limit;
+- bounded flow effects such as extra draw and extra dora reveal;
+- wall and river layout patches through explicit topology policies.
 
-Whole-pack validation must include exclusive-write conflicts, overlap witnesses, dependency cycles, event-depth budgets, and deterministic random substreams.
+Whole-pack validation must include exclusive-write conflicts, overlap witnesses, dependency cycles, event-depth budgets, attachment charge bounds, and deterministic random substreams.
 
 ## Compiler order
 
