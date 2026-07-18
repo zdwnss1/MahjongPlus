@@ -1,0 +1,13 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["vitest/globals"],
+    "baseUrl": "../..",
+    "paths": {
+      "@mahjongplus/world-model": ["packages/world-model/src/index.ts"],
+      "@mahjongplus/world-language": ["packages/world-language/src/index.ts"],
+      "@mahjongplus/world-runtime": ["packages/world-runtime/src/index.ts"]
+    }
+  },
+  "include": ["src", "test"]
+}
