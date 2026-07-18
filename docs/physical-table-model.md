@@ -84,5 +84,15 @@ A called discard moves into a meld, but its river slot remains as a historical t
 - Action → event: ron, chi, pon, and kan attempts respond to a specific discard or kan event ID.
 - Event → action: a committed event records the action that caused it.
 - Event → event: derived events preserve causal ancestry.
+- Binding → tile/action/event: a rule attachment may be hosted by any entity and can inspect later related events.
 
 Bindings never mutate historical events. They emit new effects or events into the deterministic queue, with explicit visibility, lifetime, charge count, source rule, and resource budget.
+
+## 6. Relation and binding separation
+
+The relation graph and attachment registry deliberately remain separate:
+
+- relations answer what happened and how entities are connected;
+- attachments answer what remains active and may trigger later.
+
+For example, `action A targets tile T` is an immutable relation. `tile T carries a one-charge binding that emits -1 han when the causing action commits` is an active attachment. Consuming the attachment does not remove or rewrite the historical action-to-tile relation.
