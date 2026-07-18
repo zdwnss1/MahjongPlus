@@ -52,7 +52,7 @@ export class CoreProgramRuntime {
   evaluateConstraint(programId: string, variables: Record<string, unknown>): FiniteDomainResult {
     const program = this.constraints.get(programId);
     if (!program) throw new Error(`Unknown core constraint program: ${programId}`);
-    return solveFiniteDomain(program, variables);
+    return solveFiniteDomain(program, { variables: clone(variables) });
   }
 
   recomputeReducers(events: readonly RuntimeEvent[], variables: Record<string, unknown> = {}): void {
