@@ -6,6 +6,7 @@ const path = (relative: string) => fileURLToPath(new URL(relative, import.meta.u
 export default defineConfig({
   resolve: {
     alias: {
+      '@mahjongplus/world-calculus': path('../world-calculus/src/index.ts'),
       '@mahjongplus/world-capabilities': path('../world-capabilities/src/index.ts'),
       '@mahjongplus/world-model': path('../world-model/src/index.ts'),
       '@mahjongplus/world-language': path('../world-language/src/index.ts'),
