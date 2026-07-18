@@ -1,5 +1,14 @@
+import {
+  verifyCapabilityRequirements,
+  type CapabilityCatalogSnapshot,
+  type CapabilityRequirement,
+} from '@mahjongplus/world-capabilities';
 import { stableHash } from './canonical.js';
 import type { EffectDefinition, ProcedureDefinition, WorldImage, WorldSource } from './ast.js';
+
+export interface CompileWorldOptions {
+  capabilityCatalog?: CapabilityCatalogSnapshot;
+}
 
 function uniqueIds(kind: string, values: { id: string }[]): void {
   const seen = new Set<string>();
@@ -7,6 +16,37 @@ function uniqueIds(kind: string, values: { id: string }[]): void {
     if (!value.id) throw new Error(`${kind} id is required.`);
     if (seen.has(value.id)) throw new Error(`Duplicate ${kind} id: ${value.id}`);
     seen.add(value.id);
+  }
+}
+
+function collectCapabilityCalls(value: unknown, output: Array<{ capabilityId: string; version?: string }> = []) {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectCapabilityCalls(entry, output);
+    return output;
+  }
+  if (!value || typeof value !== 'object') return output;
+  const object = value as Record<string, unknown>;
+  if (object.kind === 'capability-call' && typeof object.capabilityId === 'string') {
+    output.push({
+      capabilityId: object.capabilityId,
+      version: typeof object.version === 'string' ? object.version : undefined,
+    });
+  }
+  for (const entry of Object.values(object)) collectCapabilityCalls(entry, output);
+  return output;
+}
+
+function assertCallsDeclared(source: WorldSource, requirements: CapabilityRequirement[]): void {
+  const calls = collectCapabilityCalls(source);
+  for (const call of calls) {
+    const matches = requirements.filter((requirement) => requirement.id === call.capabilityId);
+    if (matches.length === 0) throw new Error(`Capability call ${call.capabilityId} is not declared by the world image.`);
+    if (call.version && !matches.some((requirement) => requirement.version === call.version)) {
+      throw new Error(`Capability call ${call.capabilityId}@${call.version} is not declared by the world image.`);
+    }
+    if (!call.version && matches.length !== 1) {
+      throw new Error(`Capability call ${call.capabilityId} requires an explicit version.`);
+    }
   }
 }
 
@@ -33,7 +73,7 @@ function validateEffect(
   }
 }
 
-export function compileWorld(source: WorldSource): WorldImage {
+export function compileWorld(source: WorldSource, options: CompileWorldOptions = {}): WorldImage {
   if (!source.schemaVersion) throw new Error('World schema version is required.');
   if (!source.id) throw new Error('World id is required.');
   uniqueIds('entity', source.entities);
@@ -42,6 +82,19 @@ export function compileWorld(source: WorldSource): WorldImage {
   uniqueIds('action', source.actions);
   uniqueIds('procedure', source.procedures);
   uniqueIds('response window', source.responseWindows ?? []);
+
+  const requirements = structuredClone(source.capabilities ?? []);
+  const requirementKeys = new Set<string>();
+  for (const requirement of requirements) {
+    const key = `${requirement.id}@${requirement.version}`;
+    if (requirementKeys.has(key)) throw new Error(`Duplicate capability requirement ${key}.`);
+    requirementKeys.add(key);
+  }
+  assertCallsDeclared(source, requirements);
+  if (requirements.length > 0) {
+    if (!options.capabilityCatalog) throw new Error('A capability catalog is required to compile this world image.');
+    verifyCapabilityRequirements(requirements, options.capabilityCatalog);
+  }
 
   const entityIds = new Set(source.entities.map((entity) => entity.id));
   const zoneIds = new Set(source.zones.map((zone) => zone.id));
@@ -113,6 +166,10 @@ export function compileWorld(source: WorldSource): WorldImage {
     if (!procedures.has(item.procedureId)) throw new Error(`Bootstrap references unknown procedure ${item.procedureId}.`);
   }
 
-  const normalized = structuredClone({ ...source, responseWindows: source.responseWindows ?? [] });
+  const normalized = structuredClone({
+    ...source,
+    responseWindows: source.responseWindows ?? [],
+    capabilities: requirements,
+  });
   return { ...normalized, hash: stableHash(normalized) };
 }
