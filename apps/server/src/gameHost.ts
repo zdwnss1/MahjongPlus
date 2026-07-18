@@ -86,7 +86,7 @@ export class GameHost {
         .sort((left, right) => right.score - left.score)
         .map((entry) => entry.id);
       this.result = { scores, ranks };
-      this.lastEvent = 'g��局结束';
+      this.lastEvent = '牌局结束';
       this.bumpRevision('match.finished', this.result);
       options.onUpdate();
       options.onFinish(paipu);
@@ -123,7 +123,7 @@ export class GameHost {
       ruleModules: this.ruleModules,
     });
 
-    committedEventIds: string[] = [];
+    const committedEventIds: string[] = [];
     if (result.violations.length && result.outcome !== 'stale' && result.outcome !== 'invalid') {
       this.violationCounts.set(playerId, (this.violationCounts.get(playerId) ?? 0) + 1);
       committedEventIds.push(this.journal.append('violation.committed', result.violations, playerId).id);
