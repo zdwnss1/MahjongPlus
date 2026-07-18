@@ -8,9 +8,10 @@
   "workspaces": ["apps/*", "packages/*"],
   "scripts": {
     "dev": "concurrently -n server,web -c auto \"npm run dev -w @mahjongplus/server\" \"npm run dev -w @mahjongplus/web\"",
-    "build": "npm run build -w @mahjongplus/shared && npm run build -w @mahjongplus/server && npm run build -w @mahjongplus/web",
+    "build:world": "npm run build -w @mahjongplus/world-model && npm run build -w @mahjongplus/world-language && npm run build -w @mahjongplus/world-runtime && npm run build -w @mahjongplus/preset-riichi",
+    "build": "npm run build:world && npm run build -w @mahjongplus/shared && npm run build -w @mahjongplus/server && npm run build -w @mahjongplus/web",
     "typecheck": "npm run typecheck -ws --if-present",
-    "test": "npm run test -w @mahjongplus/server",
+    "test": "npm run test -w @mahjongplus/server && npm run test -w @mahjongplus/preset-riichi",
     "start": "npm run start -w @mahjongplus/server"
   },
   "devDependencies": {
