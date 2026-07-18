@@ -1,0 +1,27 @@
+name: bootstrap-source
+on:
+  push:
+    branches: [main]
+    paths:
+      - bootstrap.tar.gz.b64
+      - .github/workflows/bootstrap.yml
+permissions:
+  contents: write
+jobs:
+  unpack:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Expand validated source tree
+        run: |
+          base64 --decode bootstrap.tar.gz.b64 > /tmp/source.tar.gz
+          tar -xzf /tmp/source.tar.gz
+          rm bootstrap.tar.gz.b64
+          rm .github/workflows/bootstrap.yml
+      - name: Commit source
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Implement playable MahjongPlus MVP"
+          git push
