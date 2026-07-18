@@ -4,7 +4,7 @@ import { createServer } from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { Server } from 'socket.io';
-import type { Ack, MatchConstitution, RuleVote, SessionIdentity } from '@mahjongplus/shared';
+import type { Ack, ActionAttempt, ActionReceipt, MatchConstitution, RuleVote, SessionIdentity } from '@mahjongplus/shared';
 import { RoomStore, safeAck } from './room.js';
 
 const app = express();
@@ -64,8 +64,9 @@ io.on('connection', (socket) => {
   socket.on('governance:skip', (payload: { all?: boolean }, ack?: (value: Ack) => void) => safeAck(ack, () => {
     const { room, playerId } = identity(); room.skipRule(playerId, Boolean(payload.all)); return undefined;
   }));
-  socket.on('game:action', (payload: { requestId: string; optionId: string }, ack?: (value: Ack) => void) => safeAck(ack, () => {
-    const { room, playerId } = identity(); room.gameAction(playerId, payload.requestId, payload.optionId); return undefined;
+  socket.on('game:attempt', (payload: ActionAttempt, ack?: (value: Ack<ActionReceipt>) => void) => safeAck(ack, () => {
+    const { room, playerId } = identity();
+    return room.gameAttempt(playerId, payload);
   }));
   socket.on('match:next', (_payload: unknown, ack?: (value: Ack) => void) => safeAck(ack, () => {
     const { room, playerId } = identity(); room.nextMatch(playerId); return undefined;
