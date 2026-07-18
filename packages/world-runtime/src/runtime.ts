@@ -1,5 +1,6 @@
 import type { ActionDefinition, EffectDefinition, RequirementDefinition, WorldImage } from '@mahjongplus/world-language';
 import { WorldStateStore, type WorldRef } from '@mahjongplus/world-model';
+import { CoreProgramRuntime } from './corePrograms.js';
 import {
   evaluateDynamic,
   evaluateEntityRef,
@@ -28,6 +29,7 @@ export class WorldRuntime {
   readonly scheduler: ProcedureScheduler;
   readonly journal: RuntimeJournal;
   readonly windows: ResponseWindowManager;
+  readonly core: CoreProgramRuntime;
   private readonly actions: Map<string, ActionDefinition>;
   private readonly receipts = new Map<string, WorldActionReceipt>();
   private revision = 0;
@@ -37,7 +39,8 @@ export class WorldRuntime {
   constructor(readonly image: WorldImage) {
     this.store = new WorldStateStore({ entities: image.entities, zones: image.zones, relations: image.relations });
     this.scheduler = new ProcedureScheduler(image.procedures);
-    this.journal = new RuntimeJournal(this.store);
+    this.core = new CoreProgramRuntime(image.corePrograms);
+    this.journal = new RuntimeJournal(this.store, (_event, events) => this.core.recomputeReducers(events));
     this.windows = new ResponseWindowManager(image.responseWindows ?? []);
     this.actions = new Map(image.actions.map((action) => [action.id, action]));
     for (const event of image.initialEvents ?? []) {
@@ -65,6 +68,10 @@ export class WorldRuntime {
 
   openResponseWindows() {
     return this.windows.openWindows();
+  }
+
+  coreReducerState<T = unknown>(programId: string): T {
+    return this.core.reducerState<T>(programId);
   }
 
   attempt(attempt: WorldActionAttempt): WorldActionReceipt {
@@ -153,6 +160,7 @@ export class WorldRuntime {
     const schedulerCheckpoint = this.scheduler.snapshot();
     const journalCheckpoint = this.journal.checkpoint();
     const windowCheckpoint = this.windows.snapshot();
+    const coreCheckpoint = this.core.snapshot();
     const actionEntityId = `action:${++this.actionSequence}`;
     const eventIds = [attemptedEvent.id];
     try {
@@ -197,6 +205,7 @@ export class WorldRuntime {
       this.scheduler.restore(schedulerCheckpoint);
       this.journal.truncate(journalCheckpoint);
       this.windows.restore(windowCheckpoint);
+      this.core.restore(coreCheckpoint);
       this.revision += 1;
       return this.recordReceipt({
         attemptId: attempt.attemptId,
@@ -303,6 +312,11 @@ export class WorldRuntime {
         const exists = this.store.outgoingRelations(source, requirement.relationType)
           .some((relation) => relation.target.kind === target.kind && relation.target.id === target.id);
         if (!exists) failures.push({ id: requirement.id, message: requirement.message });
+        continue;
+      }
+      if (requirement.kind === 'core.constraint') {
+        const result = this.core.evaluateConstraint(requirement.programId, this.coreVariables(context));
+        if (!result.satisfiable) failures.push({ id: requirement.id, message: requirement.message });
         continue;
       }
 
@@ -445,6 +459,16 @@ export class WorldRuntime {
       context.lastEventId = event.id;
       return [event.id];
     }
+    if (effect.kind === 'core.rewrite') {
+      const rewritten = this.core.applyRewrite(
+        effect.programId,
+        { world: this.store.snapshot() },
+        this.coreVariables(context),
+      );
+      const validated = new WorldStateStore(rewritten.world);
+      this.store.restore(validated.snapshot());
+      return [];
+    }
     if (effect.kind === 'procedure.spawn') {
       const token = this.scheduler.spawn(
         effect.procedureId,
@@ -577,6 +601,23 @@ export class WorldRuntime {
     context.token = token;
     this.enterNode(token.id, (context.automaticDepth ?? 0) + 1);
     return [];
+  }
+
+  private coreVariables(context: EvaluationContext): Record<string, unknown> {
+    return {
+      actorId: context.actorId,
+      attemptId: context.attemptId,
+      actionId: context.actionId,
+      actionEntityId: context.actionEntityId,
+      params: structuredClone(context.parameters),
+      token: context.token ? structuredClone(context.token) : undefined,
+      window: context.window ? structuredClone(context.window) : undefined,
+      submission: context.submission ? structuredClone(context.submission) : undefined,
+      revision: this.revision,
+      world: this.store.snapshot(),
+      events: this.journal.all(),
+      reducers: this.core.allReducerStates(),
+    };
   }
 
   private moveOne(

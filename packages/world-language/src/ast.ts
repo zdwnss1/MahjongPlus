@@ -81,6 +81,12 @@ export type RequirementDefinition =
       target: EntityReferenceExpression;
       relationType: string;
       message: string;
+    }
+  | {
+      id: string;
+      kind: 'core.constraint';
+      programId: string;
+      message: string;
     };
 
 export type EffectDefinition =
@@ -149,7 +155,8 @@ export type EffectDefinition =
       sourceEntity: ValueExpression;
       parentTokenId: ValueExpression;
     }
-  | { kind: 'response-window.submit'; windowId: ValueExpression };
+  | { kind: 'response-window.submit'; windowId: ValueExpression }
+  | { kind: 'core.rewrite'; programId: string };
 
 export interface ActionDefinition {
   id: string;

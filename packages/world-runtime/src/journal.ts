@@ -1,11 +1,16 @@
 import type { WorldStateStore, WorldRef } from '@mahjongplus/world-model';
 import type { RuntimeEvent } from './types.js';
 
+export type RuntimeEventListener = (event: RuntimeEvent, events: RuntimeEvent[]) => void;
+
 export class RuntimeJournal {
   private sequence = 0;
   private readonly events: RuntimeEvent[] = [];
 
-  constructor(private readonly store: WorldStateStore) {}
+  constructor(
+    private readonly store: WorldStateStore,
+    private readonly onAppend?: RuntimeEventListener,
+  ) {}
 
   append(input: Omit<RuntimeEvent, 'id'> & { id?: string }): RuntimeEvent {
     const event: RuntimeEvent = {
@@ -24,6 +29,7 @@ export class RuntimeJournal {
     }
     event.subjects.forEach((ref, index) => this.connect(`relation:${event.id}:subject:${index}`, 'has-subject', { kind: 'event', id: event.id }, ref));
     event.objects.forEach((ref, index) => this.connect(`relation:${event.id}:object:${index}`, 'has-object', { kind: 'event', id: event.id }, ref));
+    this.onAppend?.(structuredClone(event), this.all());
     return structuredClone(event);
   }
 
