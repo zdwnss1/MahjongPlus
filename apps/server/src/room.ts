@@ -1,10 +1,12 @@
 import { nanoid } from 'nanoid';
-import type { Ack, MatchConstitution, RoomState, RuleArtifact, RuleVote, SessionIdentity } from '@mahjongplus/shared';
+import type { Ack, ActionAttempt, ActionReceipt, MatchConstitution, RoomState, RuleArtifact, RuleVote, SessionIdentity } from '@mahjongplus/shared';
 import { SEATS } from '@mahjongplus/shared';
 import type { Socket, Server } from 'socket.io';
-import { z } from 'zod';
-import { PROFILES } from './profiles.js';
+import { DEFAULT_CONSTITUTION, constitutionSchema } from './constitution.js';
 import { GameHost } from './gameHost.js';
+import { GovernanceMachine } from './governanceMachine.js';
+import { DeterministicRandom, randomSeed, type RandomSource } from './kernel/random.js';
+import { PROFILES } from './profiles.js';
 import { RecordingRuleCompiler, type RuleCompilerPort } from './ruleCompiler.js';
 
 interface PlayerRecord {
@@ -15,19 +17,10 @@ interface PlayerRecord {
   socketId: string | null;
 }
 
-const constitutionSchema = z.object({
-  baseProfile: z.enum(['tenhou', 'mleague']),
-  matchLength: z.enum(['east', 'hanchan']),
-  initialScore: z.number().int().min(1000).max(1_000_000_000),
-  bankruptcy: z.boolean(),
-  ruleSlotsPerPlayer: z.number().int().min(0).max(5),
-  actionTimeoutSeconds: z.number().int().min(10).max(180),
-});
-
-function shuffled<T>(items: T[]) {
+function shuffled<T>(items: T[], random: RandomSource) {
   const output = [...items];
-  for (let i = output.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
+  for (let i = output.length - 1; i > 0; i -= 1) {
+    const j = random.int(i + 1);
     [output[i], output[j]] = [output[j], output[i]];
   }
   return output;
@@ -39,20 +32,16 @@ export class Room {
   private players: PlayerRecord[] = [];
   private hostId = '';
   private seats: string[] = [];
-  private constitution: MatchConstitution = {
-    baseProfile: 'tenhou',
-    matchLength: 'east',
-    initialScore: 25000,
-    bankruptcy: true,
-    ruleSlotsPerPlayer: 1,
-    actionTimeoutSeconds: 45,
-  };
+  private constitution: MatchConstitution = DEFAULT_CONSTITUTION;
   private confirmations = new Set<string>();
+  private governance: GovernanceMachine | null = null;
   private acceptedRules: RuleArtifact[] = [];
-  private governance: RoomState['governance'] = null;
   private game: GameHost | null = null;
   private notice: string | null = null;
   private lastRosterSignature = '';
+  private readonly roomSeed = randomSeed();
+  private readonly roomRandom = new DeterministicRandom(this.roomSeed);
+  private matchSequence = 0;
 
   constructor(private readonly io: Server, code?: string, private readonly compiler: RuleCompilerPort = new RecordingRuleCompiler()) {
     this.code = code ?? nanoid(6).toUpperCase();
@@ -101,8 +90,8 @@ export class Room {
   beginConstitution(actorId: string) {
     this.assertHost(actorId);
     if (this.phase !== 'lobby') throw new Error('当前不能开始立宪。');
-    if (this.players.length !== 4) throw new Error('需要正好四名玩家。');
-    this.seats = shuffled(this.players.map((player) => player.id));
+    if (this.players.length !== 4) throw new Error('需要正好�名玩家。');
+    this.seats = shuffled(this.players.map((player) => player.id), this.roomRandom.fork('initial-seats'));
     this.lastRosterSignature = [...this.players.map((player) => player.id)].sort().join(':');
     this.phase = 'constitution';
     this.confirmations = new Set(this.players.filter((player) => player.isBot).map((player) => player.id));
@@ -130,86 +119,35 @@ export class Room {
     this.assertHost(actorId);
     if (this.phase !== 'constitution') throw new Error('当前不在立宪阶段。');
     if (this.confirmations.size !== 4) throw new Error('所有玩家尚未确认宪法。');
-    this.acceptedRules = [];
     this.phase = 'governance';
-    this.governance = {
-      proposerId: this.seats[0],
-      proposerSeat: 'east',
-      slot: 1,
-      totalSlots: this.constitution.ruleSlotsPerPlayer,
-      skippedAllPlayerIds: [],
-      proposal: null,
-    };
-    this.notice = '宪法冻结。开始按东、南、西、北顺序制定规则。';
-    this.normalizeGovernance();
+    this.acceptedRules = [];
+    this.governance = new GovernanceMachine(this.players, this.seats, this.constitution, this.compiler);
+    const normalized = this.governance.normalize();
+    this.notice = `宪法冻结。${normalized.notice}`;
+    if (normalized.finished) this.freezeAndStartGame();
     this.emitAll();
   }
 
   async submitRule(actorId: string, text: string) {
-    const governance = this.requireGovernance();
-    if (governance.proposerId !== actorId) throw new Error('现在不是你的规则位。');
-    if (governance.proposal) throw new Error('当前已有待处理提案。');
-    const compilation = await this.compiler.compile(text, {
-      constitution: this.constitution,
-      acceptedRules: this.acceptedRules,
-      authorId: actorId,
-      slot: governance.slot,
-    });
-    if (!compilation.ok) {
-      this.notice = `技术驳回：${compilation.reason}`;
-      this.emitAll();
-      return;
-    }
-    const voters = this.players.filter((player) => player.id !== actorId);
-    const votes = Object.fromEntries(voters.map((player) => [player.id, player.isBot ? 'approve' : null])) as Record<string, RuleVote | null>;
-    governance.proposal = {
-      id: nanoid(10),
-      authorId: actorId,
-      text: text.trim(),
-      votes,
-      stage: 'voting',
-      candidate: compilation.artifact,
-    };
-    this.resolveVotesIfReady();
-    this.emitAll();
+    const result = await this.requireGovernance().submit(actorId, text);
+    this.applyGovernanceResult(result);
   }
 
   voteRule(actorId: string, vote: RuleVote) {
-    const governance = this.requireGovernance();
-    const proposal = governance.proposal;
-    if (!proposal || proposal.stage !== 'voting') throw new Error('当前没有可投票的提案。');
-    if (proposal.authorId === actorId) throw new Error('提案者不能投票。');
-    if (!(actorId in proposal.votes)) throw new Error('你没有本次投票权。');
-    proposal.votes[actorId] = vote;
-    this.resolveVotesIfReady();
-    this.emitAll();
+    this.applyGovernanceResult(this.requireGovernance().vote(actorId, vote));
   }
 
   confirmRule(actorId: string) {
-    const governance = this.requireGovernance();
-    const proposal = governance.proposal;
-    if (!proposal || proposal.stage !== 'author-confirmation' || proposal.authorId !== actorId || !proposal.candidate) {
-      throw new Error('当前没有需要你确认的候选规则。');
-    }
-    this.acceptedRules.push(proposal.candidate);
-    this.notice = '规则已发布；MVP 将其保存为非执行 artifact。';
-    governance.proposal = null;
-    this.advanceSlot();
-    this.emitAll();
+    this.applyGovernanceResult(this.requireGovernance().confirm(actorId));
   }
 
   skipRule(actorId: string, all: boolean) {
-    const governance = this.requireGovernance();
-    if (governance.proposerId !== actorId || governance.proposal) throw new Error('当前不能跳过。');
-    if (all && !governance.skippedAllPlayerIds.includes(actorId)) governance.skippedAllPlayerIds.push(actorId);
-    this.notice = all ? '已跳过自己的全部剩余规则位。' : '已跳过当前规则位。';
-    this.advanceSlot();
-    this.emitAll();
+    this.applyGovernanceResult(this.requireGovernance().skip(actorId, all));
   }
 
-  gameAction(actorId: string, requestId: string, optionId: string) {
+  gameAttempt(actorId: string, attempt: ActionAttempt): ActionReceipt {
     if (this.phase !== 'playing' || !this.game) throw new Error('当前没有进行中的牌局。');
-    if (!this.game.respond(actorId, requestId, optionId)) throw new Error('动作已过期或不合法。');
+    return this.game.attempt(actorId, attempt);
   }
 
   nextMatch(actorId: string) {
@@ -218,18 +156,12 @@ export class Room {
     const rosterSignature = [...this.players.map((player) => player.id)].sort().join(':');
     if (rosterSignature !== this.lastRosterSignature) throw new Error('人员已变化，需要重新随机座位。');
     this.seats = [...this.seats.slice(1), this.seats[0]];
-    this.acceptedRules = [];
     this.phase = 'governance';
-    this.governance = {
-      proposerId: this.seats[0],
-      proposerSeat: 'east',
-      slot: 1,
-      totalSlots: this.constitution.ruleSlotsPerPlayer,
-      skippedAllPlayerIds: [],
-      proposal: null,
-    };
-    this.notice = '下一场沿用宪法，原南家成为东家，重新制定本场规则。';
-    this.normalizeGovernance();
+    this.acceptedRules = [];
+    this.governance = new GovernanceMachine(this.players, this.seats, this.constitution, this.compiler);
+    const normalized = this.governance.normalize();
+    this.notice = `下一场沿用宪法，原南家成为东家。${normalized.notice}`;
+    if (normalized.finished) this.freezeAndStartGame();
     this.emitAll();
   }
 
@@ -247,8 +179,8 @@ export class Room {
       })),
       constitution: this.constitution,
       constitutionConfirmedBy: [...this.confirmations],
-      governance: this.governance,
-      acceptedRules: this.acceptedRules,
+      governance: this.governance?.state ?? null,
+      acceptedRules: this.governance?.acceptedRules ?? this.acceptedRules,
       game: this.game?.snapshot(forPlayerId) ?? null,
       notice: this.notice,
     };
@@ -258,6 +190,12 @@ export class Room {
     for (const player of this.players) {
       if (player.socketId) this.io.to(player.socketId).emit('room:state', this.publicState(player.id));
     }
+  }
+
+  private applyGovernanceResult(result: { notice: string; finished: boolean }) {
+    this.notice = result.notice;
+    if (result.finished) this.freezeAndStartGame();
+    this.emitAll();
   }
 
   private makePlayer(name: string, isBot: boolean): PlayerRecord {
@@ -280,58 +218,11 @@ export class Room {
     return this.governance;
   }
 
-  private resolveVotesIfReady() {
-    const governance = this.requireGovernance();
-    const proposal = governance.proposal;
-    if (!proposal || proposal.stage !== 'voting') return;
-    const votes = Object.values(proposal.votes);
-    if (votes.some((vote) => vote === null)) return;
-    if (votes.every((vote) => vote === 'reject')) {
-      this.notice = '三名非提案者一致反对，提案被驳回；当前规则位仍可重新提交。';
-      governance.proposal = null;
-      return;
-    }
-    proposal.stage = 'author-confirmation';
-    this.notice = '提案未被一致驳回，等待作者确认规范化 artifact。';
-  }
-
-  private advanceSlot() {
-    const governance = this.requireGovernance();
-    governance.slot += 1;
-    if (governance.slot > governance.totalSlots) {
-      const proposerIndex = governance.proposerId ? this.seats.indexOf(governance.proposerId) : -1;
-      const nextIndex = proposerIndex + 1;
-      if (nextIndex >= this.seats.length) {
-        this.freezeAndStartGame();
-        return;
-      }
-      governance.proposerId = this.seats[nextIndex];
-      governance.proposerSeat = SEATS[nextIndex];
-      governance.slot = 1;
-    }
-    this.normalizeGovernance();
-  }
-
-  private normalizeGovernance() {
-    if (this.phase !== 'governance' || !this.governance) return;
-    const governance = this.governance;
-    if (governance.totalSlots === 0) return this.freezeAndStartGame();
-    while (governance.proposerId) {
-      const player = this.getPlayer(governance.proposerId);
-      if (!player.isBot && !governance.skippedAllPlayerIds.includes(player.id)) break;
-      if (player.isBot && !governance.skippedAllPlayerIds.includes(player.id)) governance.skippedAllPlayerIds.push(player.id);
-      const index = this.seats.indexOf(player.id) + 1;
-      if (index >= this.seats.length) return this.freezeAndStartGame();
-      governance.proposerId = this.seats[index];
-      governance.proposerSeat = SEATS[index];
-      governance.slot = 1;
-    }
-  }
-
   private freezeAndStartGame() {
+    this.acceptedRules = [...(this.governance?.acceptedRules ?? this.acceptedRules)];
     this.phase = 'playing';
     this.governance = null;
-    this.notice = '规则包已冻结，运行时不再调用 LLM。';
+    this.notice = '规则包已冻结。所有现实动作均可尝试，由服务器裁定、执行或处罚。';
     const orderedPlayers = this.seats.map((id) => this.getPlayer(id));
     const rule = PROFILES[this.constitution.baseProfile].build(this.constitution);
     this.game = new GameHost({
@@ -344,6 +235,9 @@ export class Room {
       })),
       rule,
       timeoutSeconds: this.constitution.actionTimeoutSeconds,
+      penaltyPolicy: this.constitution.penaltyPolicy,
+      seed: `${this.roomSeed}:match:${this.matchSequence++}`,
+      ruleModules: [],
       onUpdate: () => this.emitAll(),
       onFinish: () => {
         this.phase = 'finished';
@@ -357,7 +251,6 @@ export class Room {
 
 export class RoomStore {
   private readonly rooms = new Map<string, Room>();
-
   constructor(private readonly io: Server) {}
 
   create(name: string) {
