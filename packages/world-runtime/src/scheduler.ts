@@ -59,6 +59,14 @@ export class ProcedureScheduler {
     return structuredClone(token);
   }
 
+  setOwner(tokenId: string, ownerId: string, nodeId: string): ProcedureToken {
+    const token = this.require(tokenId);
+    token.ownerId = ownerId;
+    token.nodeId = nodeId;
+    this.requireNode(token);
+    return structuredClone(token);
+  }
+
   node(token: ProcedureToken): ReturnType<ProcedureScheduler['requireNode']> {
     return this.requireNode(token);
   }

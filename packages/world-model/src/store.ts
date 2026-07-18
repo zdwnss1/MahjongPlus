@@ -1,4 +1,5 @@
 import type {
+  ClaimOptions,
   CreateZoneInput,
   EntityRecord,
   PlaceOptions,
@@ -9,12 +10,16 @@ import type {
   ZoneRecord,
 } from './types.js';
 
-function cloneValue<T>(value: T): T {
-  return structuredClone(value);
-}
+const cloneValue = <T>(value: T): T => structuredClone(value);
+const refKey = (ref: WorldRef) => `${ref.kind}:${ref.id}`;
 
-function refKey(ref: WorldRef): string {
-  return `${ref.kind}:${ref.id}`;
+function readObjectPath(value: unknown, path: string): unknown {
+  let cursor = value;
+  for (const part of path.split('.')) {
+    if (!cursor || typeof cursor !== 'object') return undefined;
+    cursor = (cursor as Record<string, unknown>)[part];
+  }
+  return cursor;
 }
 
 export class WorldStateStore {
@@ -63,6 +68,10 @@ export class WorldStateStore {
     return cloneValue(this.requireEntity(entityId).components[component] as T | undefined);
   }
 
+  readEntityPath(entityId: string, path: string): unknown {
+    return cloneValue(readObjectPath(this.requireEntity(entityId).components, path));
+  }
+
   createZone(input: CreateZoneInput | ZoneRecord): ZoneRecord {
     if (!input.id) throw new Error('Zone id is required.');
     if (this.zones.has(input.id)) throw new Error(`Duplicate zone id: ${input.id}`);
@@ -72,7 +81,10 @@ export class WorldStateStore {
       ordered: input.ordered,
       capacity: input.capacity,
       metadata: cloneValue(input.metadata ?? {}),
-      entries: cloneValue(input.entries ?? []),
+      entries: cloneValue(input.entries ?? []).map((entry) => ({
+        ...entry,
+        state: entry.state ?? 'occupied',
+      })),
     };
     this.reindex(zone);
     this.zones.set(zone.id, zone);
@@ -90,11 +102,14 @@ export class WorldStateStore {
   }
 
   zoneEntityIds(zoneId: string): string[] {
-    return this.requireZone(zoneId).entries.map((entry) => entry.entityId);
+    return this.requireZone(zoneId).entries
+      .filter((entry) => (entry.state ?? 'occupied') === 'occupied')
+      .map((entry) => entry.entityId);
   }
 
   zoneContaining(entityId: string): ZoneRecord | undefined {
-    const zone = [...this.zones.values()].find((candidate) => candidate.entries.some((entry) => entry.entityId === entityId));
+    const zone = [...this.zones.values()].find((candidate) => candidate.entries.some((entry) =>
+      entry.entityId === entityId && (entry.state ?? 'occupied') === 'occupied'));
     return zone ? cloneValue(zone) : undefined;
   }
 
@@ -102,14 +117,19 @@ export class WorldStateStore {
     this.requireEntity(entityId);
     const zone = this.requireZone(zoneId);
     if (this.zoneContaining(entityId)) throw new Error(`Entity ${entityId} already occupies a zone.`);
-    if (zone.capacity != null && zone.entries.length >= zone.capacity) throw new Error(`Zone ${zoneId} is full.`);
+    if (zone.capacity != null && this.zoneEntityIds(zoneId).length >= zone.capacity) {
+      throw new Error(`Zone ${zoneId} is full.`);
+    }
     const index = options.index ?? zone.entries.length;
-    if (!Number.isInteger(index) || index < 0 || index > zone.entries.length) throw new Error('Invalid zone insertion index.');
+    if (!Number.isInteger(index) || index < 0 || index > zone.entries.length) {
+      throw new Error('Invalid zone insertion index.');
+    }
     const entry: ZoneEntry = {
       slotId: options.slotId ?? `${zoneId}:slot:auto:${++this.slotSequence}`,
       entityId,
       ordinal: index,
       metadata: cloneValue(options.metadata ?? {}),
+      state: 'occupied',
     };
     zone.entries.splice(index, 0, entry);
     this.reindex(zone);
@@ -118,7 +138,8 @@ export class WorldStateStore {
 
   remove(zoneId: string, entityId: string): ZoneEntry {
     const zone = this.requireZone(zoneId);
-    const index = zone.entries.findIndex((entry) => entry.entityId === entityId);
+    const index = zone.entries.findIndex((entry) =>
+      entry.entityId === entityId && (entry.state ?? 'occupied') === 'occupied');
     if (index < 0) throw new Error(`Entity ${entityId} is not in zone ${zoneId}.`);
     const [entry] = zone.entries.splice(index, 1);
     this.reindex(zone);
@@ -140,9 +161,31 @@ export class WorldStateStore {
   }
 
   moveHead(fromZoneId: string, toZoneId: string, options: PlaceOptions = {}): ZoneEntry {
-    const entityId = this.requireZone(fromZoneId).entries[0]?.entityId;
+    const entityId = this.zoneEntityIds(fromZoneId)[0];
     if (!entityId) throw new Error(`Zone ${fromZoneId} is empty.`);
     return this.move(entityId, fromZoneId, toZoneId, options);
+  }
+
+  claim(entityId: string, fromZoneId: string, toZoneId: string, options: ClaimOptions): ZoneEntry {
+    const source = this.requireZone(fromZoneId);
+    const entry = source.entries.find((candidate) =>
+      candidate.entityId === entityId && (candidate.state ?? 'occupied') === 'occupied');
+    if (!entry) throw new Error(`Entity ${entityId} is not claimable in zone ${fromZoneId}.`);
+
+    const previous = cloneValue(entry);
+    entry.state = 'claimed';
+    entry.claimedByActionId = options.claimedByActionId;
+    entry.metadata = { ...entry.metadata, ...cloneValue(options.metadata ?? {}) };
+    try {
+      return this.place(toZoneId, entityId, {
+        index: options.index,
+        slotId: options.slotId,
+        metadata: options.metadata,
+      });
+    } catch (error) {
+      Object.assign(entry, previous);
+      throw error;
+    }
   }
 
   connect(relation: RelationRecord): RelationRecord {
