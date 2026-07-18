@@ -75,12 +75,6 @@ export type RequirementDefinition =
       target: EntityReferenceExpression;
       relationType: string;
       message: string;
-    }
-  | {
-      id: string;
-      kind: 'capability-constraint';
-      call: CapabilityCallExpression;
-      message: string;
     };
 
 export type EffectDefinition =
@@ -149,8 +143,7 @@ export type EffectDefinition =
       sourceEntity: ValueExpression;
       parentTokenId: ValueExpression;
     }
-  | { kind: 'response-window.submit'; windowId: ValueExpression }
-  | { kind: 'capability.expand-effects'; call: CapabilityCallExpression };
+  | { kind: 'response-window.submit'; windowId: ValueExpression };
 
 export interface ActionDefinition {
   id: string;
