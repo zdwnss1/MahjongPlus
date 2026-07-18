@@ -4,6 +4,7 @@
     "types": ["vitest/globals"],
     "baseUrl": "../..",
     "paths": {
+      "@mahjongplus/world-capabilities": ["packages/world-capabilities/src/index.ts"],
       "@mahjongplus/world-model": ["packages/world-model/src/index.ts"],
       "@mahjongplus/world-language": ["packages/world-language/src/index.ts"],
       "@mahjongplus/world-runtime": ["packages/world-runtime/src/index.ts"]
