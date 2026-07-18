@@ -1,4 +1,10 @@
 import type { CapabilityRequirement } from '@mahjongplus/world-capabilities';
+import type {
+  CoreProgramBundle,
+  EventReducerDefinition,
+  FiniteDomainProgram,
+  RewriteProgram,
+} from '@mahjongplus/world-calculus';
 import type { EntityRecord, RelationRecord, ZoneRecord } from '@mahjongplus/world-model';
 
 export type Primitive = string | number | boolean | null;
@@ -179,6 +185,12 @@ export interface ResponseWindowDefinition {
   selectionEffects: Record<string, EffectDefinition[]>;
 }
 
+export interface WorldCorePrograms extends CoreProgramBundle {
+  constraints?: FiniteDomainProgram[];
+  reducers?: EventReducerDefinition[];
+  rewrites?: RewriteProgram[];
+}
+
 export interface WorldSource {
   schemaVersion: string;
   id: string;
@@ -188,6 +200,8 @@ export interface WorldSource {
   actions: ActionDefinition[];
   procedures: ProcedureDefinition[];
   responseWindows?: ResponseWindowDefinition[];
+  corePrograms?: WorldCorePrograms;
+  /** Escape hatch only. Primary rule semantics belong in corePrograms. */
   capabilities?: CapabilityRequirement[];
   bootstrap: BootstrapProcedure[];
   initialEvents?: InitialEventDefinition[];
