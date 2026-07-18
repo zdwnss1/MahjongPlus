@@ -1,0 +1,19 @@
+{
+  "name": "mahjongplus",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Networked constitutional riichi mahjong with an extensible rule compiler boundary.",
+  "license": "MIT",
+  "engines": { "node": ">=20" },
+  "workspaces": ["apps/*", "packages/*"],
+  "scripts": {
+    "dev": "concurrently -n server,web -c auto \"npm run dev -w @mahjongplus/server\" \"npm run dev -w @mahjongplus/web\"",
+    "build": "npm run build -w @mahjongplus/shared && npm run build -w @mahjongplus/server && npm run build -w @mahjongplus/web",
+    "typecheck": "npm run typecheck -ws --if-present",
+    "test": "npm run test -w @mahjongplus/server",
+    "start": "npm run start -w @mahjongplus/server"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.0"
+  }
+}
