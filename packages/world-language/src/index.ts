@@ -6,3 +6,4 @@ export * from './responseBatches.js';
 export * from './recordPipelines.js';
 export * from './ruleModules.js';
 export * from './mahjongMcp.js';
+export * from './mahjongAuthoring.js';
