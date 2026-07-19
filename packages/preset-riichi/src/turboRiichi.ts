@@ -1,4 +1,10 @@
-import type { DataSchema, WorldSource } from '@mahjongplus/world-language';
+import type { CoreExpression } from '@mahjongplus/world-calculus';
+import {
+  createNoOpenResponseWindowsConstraint,
+  createResponseBatchProgressRewrite,
+  type DataSchema,
+  type WorldSource,
+} from '@mahjongplus/world-language';
 import { createTurboRiichiModel } from './turboRiichiModel.js';
 import { createTurboRiichiPrograms } from './turboRiichiPrograms.js';
 import {
@@ -8,6 +14,12 @@ import {
 } from './turboRiichiTypes.js';
 
 export * from './turboRiichiTypes.js';
+
+const coreLiteral = (value: unknown): CoreExpression => ({ kind: 'literal', value });
+const coreVariable = (name: string): CoreExpression => ({ kind: 'variable', name });
+const corePath = (target: CoreExpression, ...parts: string[]): CoreExpression => ({ kind: 'path', target, path: parts });
+const coreMap = (source: CoreExpression, as: string, select: CoreExpression): CoreExpression => ({ kind: 'map', source, as, select });
+const coreRecord = (fields: Record<string, CoreExpression>): CoreExpression => ({ kind: 'record', fields });
 
 export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): TurboRiichiFixture {
   const model = createTurboRiichiModel(options);
@@ -32,6 +44,48 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
     additionalProperties: false,
   };
 
+  const noOpenWindows = createNoOpenResponseWindowsConstraint('turbo-riichi.no-open-response-windows');
+  const selectedItems = coreMap(
+    corePath(coreVariable('window'), 'selected'),
+    'selected',
+    coreRecord({
+      actorId: corePath(coreVariable('selected'), 'actorId'),
+      actionId: corePath(coreVariable('selected'), 'actionId'),
+      actionEntityId: corePath(coreVariable('selected'), 'actionEntityId'),
+    }),
+  );
+  const responseBatchRewrite = createResponseBatchProgressRewrite({
+    id: 'turbo-riichi.collect-response-batch',
+    batchesPath: [
+      'world',
+      'entities',
+      model.entityIndex('track:response-batches'),
+      'components',
+      'responseBatches',
+      'records',
+    ],
+    batches: corePath(
+      coreVariable('world'),
+      'entities',
+      model.entityIndex('track:response-batches'),
+      'components',
+      'responseBatches',
+      'records',
+    ),
+    batchId: corePath(coreVariable('window'), 'id'),
+    batchKind: coreLiteral('continuing-win'),
+    sourceWindowId: corePath(coreVariable('window'), 'id'),
+    items: selectedItems,
+    currentItemKey: corePath(coreVariable('submission'), 'actionEntityId'),
+    metadata: coreRecord({
+      sourceActorId: corePath(coreVariable('window'), 'sourceActorId'),
+      sourceEventId: corePath(coreVariable('window'), 'sourceEventId'),
+      sourceEntityId: corePath(coreVariable('window'), 'sourceEntityId'),
+      parentTokenId: corePath(coreVariable('window'), 'parentTokenId'),
+      continuingHand: coreLiteral(true),
+    }),
+  });
+
   const source: WorldSource = {
     schemaVersion: 'mwl/0.5',
     id: `turbo-riichi-fixture:${policy.declarerId}:${policy.maxWinsPerPlayer ?? 'unlimited'}`,
@@ -54,13 +108,10 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
       participantOrder: [...TURBO_PLAYERS],
       excludeSourceActor: true,
       tiers: [{ actionIds: ['turbo-riichi.win'], selection: 'all', maxSelections: 3 }],
-      noSelectionEffects: [{
-        kind: 'procedure.transition',
-        tokenId: context('window.parentTokenId'),
-        nodeId: 'await-draw',
-      }],
+      noSelectionEffects: [],
       selectionEffects: {
         'turbo-riichi.win': [
+          { kind: 'core.rewrite', programId: responseBatchRewrite.id },
           { kind: 'core.rewrite', programId: programs.rewrites.ron.id },
           {
             kind: 'event.emit',
@@ -68,11 +119,6 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
             subjects: [{ kind: 'actor' }],
             objects: [{ kind: 'window-source-entity', entityKind: 'tile' }],
             payload: { mode: 'ron', continuingHand: true },
-          },
-          {
-            kind: 'procedure.transition',
-            tokenId: context('window.parentTokenId'),
-            nodeId: 'await-draw',
           },
         ],
       },
@@ -180,6 +226,12 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
             message: 'It is not this player draw turn.',
           },
           {
+            id: 'draw.responses-complete',
+            kind: 'core.constraint',
+            programId: noOpenWindows.id,
+            message: 'A response window is still open.',
+          },
+          {
             id: 'draw.wall',
             kind: 'zone-not-empty',
             zone: literal('wall.live'),
@@ -242,7 +294,7 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
             kind: 'procedure.set-owner',
             tokenId: context('token.id'),
             owner: context('params.nextActorId'),
-            nodeId: 'await-response',
+            nodeId: 'await-draw',
           },
           {
             kind: 'response-window.open',
@@ -335,6 +387,12 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
             message: 'The hand cannot end from this procedure state.',
           },
           {
+            id: 'end.responses-complete',
+            kind: 'core.constraint',
+            programId: noOpenWindows.id,
+            message: 'A response window is still open.',
+          },
+          {
             id: 'end.wall-empty',
             kind: 'core.constraint',
             programId: programs.constraints.wallEmpty.id,
@@ -353,9 +411,9 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
       },
     ],
     corePrograms: {
-      constraints: Object.values(programs.constraints),
+      constraints: [...Object.values(programs.constraints), noOpenWindows],
       reducers: Object.values(programs.reducers),
-      rewrites: Object.values(programs.rewrites),
+      rewrites: [...Object.values(programs.rewrites), responseBatchRewrite],
     },
     bootstrap: [{ procedureId: 'turn', ownerId: policy.declarerId, tokenId: 'procedure-token:turn' }],
     metadata: {
@@ -365,8 +423,8 @@ export function createTurboRiichiFixture(options: TurboRiichiOptions = {}): Turb
       languageNotes: {
         exposedTriplet: 'Visibility changes without moving or opening the tile entities.',
         forcedDiscard: 'Subject-scoped discard policies are consumed by the ordinary discard constraint.',
-        continuingWins: 'Win records do not transition to a terminal hand state.',
-        simultaneousWins: 'The existing all-selection response tier records every accepted claim.',
+        continuingWins: 'The turn advances optimistically; an open-window constraint blocks continuation until resolution.',
+        simultaneousWins: 'Selected claims update one idempotent response batch until every item is processed.',
         winLimit: 'A per-subject count constraint over generic win records.',
       },
     },
