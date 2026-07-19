@@ -8,6 +8,8 @@ import { createTurboRiichiModel, type TurboRiichiModel } from './turboRiichiMode
 import { createTurboSettlementPrograms } from './turboSettlementPrograms.js';
 import type { TurboRiichiFixture, TurboRiichiOptions } from './turboRiichiTypes.js';
 
+export type { TurboRiichiSeat } from './turboRiichiTypes.js';
+
 const context = (path: string) => ({ kind: 'context', path } as const);
 
 function requireAction(source: WorldSource, id: string): ActionDefinition {
