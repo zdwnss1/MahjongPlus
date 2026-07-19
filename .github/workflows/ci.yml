@@ -11,6 +11,23 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run typecheck
+      - name: Capture typecheck
+        id: typecheck
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > typecheck.log 2>&1
+          status=$?
+          cat typecheck.log
+          echo "status=$status" >> "$GITHUB_OUTPUT"
+          exit 0
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: interpretation-typecheck
+          path: typecheck.log
+      - name: Fail on typecheck error
+        if: steps.typecheck.outputs.status != '0'
+        run: exit 1
       - run: npm test
       - run: npm run build
