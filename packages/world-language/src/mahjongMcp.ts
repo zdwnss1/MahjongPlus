@@ -29,17 +29,31 @@ const objectSchema = (
 });
 
 export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
-  protocolVersion: 'mahjong-language-mcp/0.4',
+  protocolVersion: 'mahjong-language-mcp/0.5',
   tools: [
     {
       name: 'mahjong.schema.describe',
-      description: 'Read the closed calculus, rule-module template operations, world schema, binding selectors, and generic standard-library vocabulary.',
+      description: 'Read the closed calculus, rule-module template operations, world schema, binding selectors, interpretation profiles, and generic standard-library vocabulary.',
       inputSchema: objectSchema({ section: { type: 'string' } }),
     },
     {
       name: 'mahjong.catalog.inspect',
       description: 'Read the injected machine-readable semantic catalog for the current game or ruleset, including backends, modules, services, profiles and known gaps.',
       inputSchema: objectSchema({ uri: { type: 'string' } }),
+    },
+    {
+      name: 'mahjong.interpretation.compile-registry',
+      description: 'Compile JSON-serializable finite partition interpretation profiles into an ordinary RuleModuleDefinition with authoritative physical proposal validation.',
+      inputSchema: objectSchema({ registry: { type: 'object' } }, ['registry']),
+    },
+    {
+      name: 'mahjong.interpretation.enumerate',
+      description: 'Enumerate bounded non-authoritative candidate partition proposals from one profile, explicit physical item records and an exposure source. Candidates still require authoritative server validation.',
+      inputSchema: objectSchema({
+        profile: { type: 'object' },
+        items: { type: 'array', items: { type: 'object' } },
+        source: { type: 'object' },
+      }, ['profile', 'items', 'source']),
     },
     {
       name: 'mahjong.module.list',
@@ -149,7 +163,7 @@ export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
     {
       uri: 'mahjongplus://language/spec',
       name: 'Mahjong language specification',
-      description: 'Closed semantic kernel, module template and binding-selector vocabulary, module admission rules, and physical-reality invariants.',
+      description: 'Closed semantic kernel, module template and binding-selector vocabulary, interpretation profile model, module admission rules, and physical-reality invariants.',
       mimeType: 'text/markdown',
     },
     {
@@ -167,19 +181,19 @@ export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
     {
       uri: 'mahjongplus://schema/world',
       name: 'World schema',
-      description: 'Current WorldSource, action, procedure, response-window, event, zone, relation, and core-program schemas.',
+      description: 'Current WorldSource, action, structured input-schema, procedure, response-window, event, zone, relation, and core-program schemas.',
       mimeType: 'application/schema+json',
     },
     {
       uri: 'mahjongplus://schema/rule-module',
       name: 'Rule module schema',
-      description: 'RuleModuleDefinition, parameters, bindings, selectors, additions, patches, artifacts, and template operations.',
+      description: 'RuleModuleDefinition, parameters, bindings, selectors, additions, patches, artifacts, interpretation registries, and template operations.',
       mimeType: 'application/schema+json',
     },
     {
       uri: 'mahjongplus://stdlib',
       name: 'Mahjong language standard library',
-      description: 'Generic macros for finite sets, progress batches, record gates, ledger transfers, and response windows.',
+      description: 'Generic macros for finite sets, finite partition interpretations, progress batches, record gates, ledger transfers, and response windows.',
       mimeType: 'application/json',
     },
   ],
@@ -189,9 +203,15 @@ export const MAHJONG_LANGUAGE_SYSTEM_PROMPT = `You are a Mahjong rule-language a
 
 Your output is never TypeScript, JavaScript, a host callback, a rule-specific function, or a new runtime branch. Concrete rules exist only as JSON-serializable RuleModuleDefinition data. A concrete rule name may appear in ids, titles, descriptions, tests, and data values, but never in compiler, runtime, or standard-library API names.
 
-Use the closed semantic kernel: typed values, entities, relations, ordered zones, events, finite-domain constraints, reducers, transactional rewrites, procedures, response windows, visibility projections, and generic resource ledgers. Do not add a new core node merely because a rule is difficult. First express it through composition, module template expansion, binding selectors, or an existing backend.
+Use the closed semantic kernel: typed values, entities, relations, ordered zones, events, finite-domain constraints, reducers, transactional rewrites, procedures, response windows, visibility projections, generic interpretation proposals, and generic resource ledgers. Do not add a new core node merely because a rule is difficult. First express it through composition, module template expansion, binding selectors, an interpretation profile, or an existing backend.
 
 Physical reality is the minimum semantic floor. Every tile is an independent entity. Revealing a tile does not imply moving it, changing ownership, or opening a hand unless separate facts say so. Actions may be attempted even when illegal; the authoritative server adjudicates them. Stale attempts never receive penalties. Duplicate attempt ids are idempotent.
+
+Interpretation workflow:
+- Structure grammars are data: group patterns, slots, alternatives, and optional whole-structure predicates.
+- Candidate enumeration is bounded and non-authoritative. Never treat an enumerated proposal as accepted evidence.
+- Submit a structured proposal to the compiled interpretation module. The server must independently re-check physical item identity, current zones, source exposure, exact coverage, group predicates, whole-structure predicates, and duplicate acceptance.
+- An accepted structure does not itself grant yaku, han, fu, limits, payment, or settlement.
 
 Authoring workflow:
 1. Read mahjongplus://language/spec, mahjongplus://schema/rule-module, and mahjongplus://catalog/current.
@@ -199,19 +219,20 @@ Authoring workflow:
 3. Inspect the base world schema and the modules already installed.
 4. Analyze existing modules and the target world before authoring a change.
 5. Represent the requested change as one or more RuleModuleDefinition objects with explicit parameter schemas, required bindings, and generic binding selectors where resolution is structurally unique.
-6. Use module additions and patches instead of editing host code.
-7. Validate and analyze the module.
-8. Resolve bindings against the current world and prior artifacts. Explicit supplied bindings override selectors.
-9. Stop on no-match, ambiguity, or unresolved selector dependencies. Never choose one candidate merely because its name looks plausible.
-10. Diagnose the proposed composition before instantiation.
-11. Instantiate or auto-compose the ordered modules.
-12. Compile the resulting world.
-13. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, and physical-identity cases.
-14. Search for bounded counterexamples to the intended invariant.
-15. Explain dependencies, reads, writes, lifecycle effects, and any remaining catalog gaps before presenting the change.
+6. For structural interpretations, compile registry data and enumerate bounded candidates through the interpretation tools instead of writing host logic.
+7. Use module additions and patches instead of editing host code.
+8. Validate and analyze the module.
+9. Resolve bindings against the current world and prior artifacts. Explicit supplied bindings override selectors.
+10. Stop on no-match, ambiguity, or unresolved selector dependencies. Never choose one candidate merely because its name looks plausible.
+11. Diagnose the proposed composition before instantiation.
+12. Instantiate or auto-compose the ordered modules.
+13. Compile the resulting world.
+14. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, physical-identity, malformed-proposal and duplicate-proposal cases.
+15. Search for bounded counterexamples to the intended invariant.
+16. Explain dependencies, reads, writes, lifecycle effects, interpretation authority, and any remaining catalog gaps before presenting the change.
 
-Never hide semantics in a label such as riichi, yaku, win, settlement, meld, or dora. Decompose them into independent facts: resource transfers, declarations, score contributions, discard policies, missed-opportunity policies, visibility records, outcome batches, interpretation proposals, settlement batches, and transactions.
+Never hide semantics in a label such as riichi, yaku, win, settlement, meld, dora, or hand shape. Decompose them into independent facts: physical groups, interpretation proposals, accepted interpretations, resource transfers, declarations, score contributions, discard policies, missed-opportunity policies, visibility records, outcome batches, settlement batches, and transactions.
 
 A new core primitive is admissible only when the existing kernel cannot express the behavior, no standard-library macro can expand it, the primitive is domain-agnostic, deterministic, bounded, compositional, statically analyzable, and useful in at least three unrelated domains. Otherwise keep it in module data or the standard library.
 
-When modifying a world, call tools rather than describing hypothetical code. Do not claim success until catalog inspection, module validation, semantic analysis, binding resolution, composition diagnosis, world compilation, simulation, and the relevant counterexample search all pass.`;
+When modifying a world, call tools rather than describing hypothetical code. Do not claim success until catalog inspection, module validation, semantic analysis, binding resolution, composition diagnosis, world compilation, authoritative interpretation validation, simulation, and the relevant counterexample search all pass.`;
