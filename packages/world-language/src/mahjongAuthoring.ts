@@ -1,4 +1,8 @@
 import type { WorldSource } from './ast.js';
+import {
+  composeWorldModulesWithAutoBindings,
+  resolveRuleModuleBindings,
+} from './bindingResolution.js';
 import { compileWorld } from './compiler.js';
 import {
   MAHJONG_LANGUAGE_MCP_CATALOG,
@@ -91,6 +95,11 @@ export class MahjongLanguageAuthoringSession {
           'ref', 'template', 'entity-index', 'zone-index', 'concat', 'if', 'eq', 'not',
           'map', 'filter', 'range', 'merge', 'arithmetic',
         ],
+        bindingSelectors: [
+          'entity-id', 'zone-id', 'action-id', 'procedure-id', 'procedure-node-id',
+          'world-metadata', 'relation-type', 'artifact', 'literal',
+          'cycle-pairs', 'null-records', 'zone-entry-candidates',
+        ],
         semanticAnalysis: [
           'provided resources', 'consumed bindings', 'patch targets', 'action semantics',
           'event producers', 'program reads', 'program writes', 'composition diagnostics',
@@ -101,7 +110,7 @@ export class MahjongLanguageAuthoringSession {
     if (uri === 'mahjongplus://schema/rule-module') {
       return {
         required: ['id', 'version'],
-        sections: ['parameters', 'requiredBindings', 'additions', 'patches', 'artifacts', 'metadata'],
+        sections: ['parameters', 'requiredBindings', 'bindingSelectors', 'additions', 'patches', 'artifacts', 'metadata'],
       };
     }
     if (uri === 'mahjongplus://stdlib') {
@@ -130,6 +139,14 @@ export class MahjongLanguageAuthoringSession {
     if (name === 'mahjong.module.analyze') {
       return analyzeRuleModuleDefinition(input.module as RuleModuleDefinition);
     }
+    if (name === 'mahjong.module.resolve-bindings') {
+      return resolveRuleModuleBindings(
+        input.world as WorldSource,
+        input.module as RuleModuleDefinition,
+        input.bindings ? asRecord(input.bindings, 'bindings') : {},
+        input.artifacts ? asRecord(input.artifacts, 'artifacts') : {},
+      );
+    }
     if (name === 'mahjong.module.instantiate') {
       const world = input.world as WorldSource;
       const module = input.module as RuleModuleDefinition;
@@ -144,6 +161,11 @@ export class MahjongLanguageAuthoringSession {
       const applications = input.applications as RuleModuleApplication[];
       if (!Array.isArray(applications)) throw new Error('applications must be an array.');
       return composeWorldModules(world, applications);
+    }
+    if (name === 'mahjong.world.compose-auto') {
+      const applications = input.applications as RuleModuleApplication[];
+      if (!Array.isArray(applications)) throw new Error('applications must be an array.');
+      return composeWorldModulesWithAutoBindings(input.world as WorldSource, applications);
     }
     if (name === 'mahjong.world.analyze') return analyzeWorldSource(input.world as WorldSource);
     if (name === 'mahjong.world.diagnose') {
