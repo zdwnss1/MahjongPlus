@@ -5,9 +5,33 @@ import type {
   WorldSource,
 } from '@mahjongplus/world-language';
 import type { FiniteDomainProgram, RewriteProgram } from '@mahjongplus/world-calculus';
+import type { EntityRecord } from '@mahjongplus/world-model';
 import type { OutcomeSettlementPrograms } from './outcomeSettlementPrograms.js';
 
 const context = (path: string) => ({ kind: 'context', path } as const);
+
+export function appendWorldModuleEntities(
+  source: WorldSource,
+  entities: EntityRecord[],
+): WorldSource {
+  const layered = structuredClone(source);
+  const known = new Set(layered.entities.map((entity) => entity.id));
+  for (const entity of entities) {
+    if (known.has(entity.id)) throw new Error(`World module duplicates entity ${entity.id}.`);
+    known.add(entity.id);
+    layered.entities.push(structuredClone(entity));
+  }
+  return layered;
+}
+
+export function createWorldEntityIndex(source: WorldSource): (id: string) => string {
+  const indices = new Map(source.entities.map((entity, index) => [entity.id, String(index)]));
+  return (id: string): string => {
+    const value = indices.get(id);
+    if (value == null) throw new Error(`World module binding references unknown entity ${id}.`);
+    return value;
+  };
+}
 
 export type EffectPatchTarget =
   | {
