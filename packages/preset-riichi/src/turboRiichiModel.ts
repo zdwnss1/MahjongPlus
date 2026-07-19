@@ -128,6 +128,7 @@ export function createTurboRiichiModel(options: TurboRiichiOptions = {}): TurboR
     factTrack('track:furiten-policies', 'furitenPolicies'),
     factTrack('track:visibility', 'visibility'),
     factTrack('track:wins', 'wins'),
+    factTrack('track:response-batches', 'responseBatches'),
   ];
   const rule: EntityRecord = {
     id: policy.id,
