@@ -9,6 +9,14 @@ import {
   MAHJONG_LANGUAGE_SYSTEM_PROMPT,
 } from './mahjongMcp.js';
 import {
+  compileResponsePartitionInterpretationModule,
+  enumeratePartitionInterpretations,
+  type PartitionInterpretationItem,
+  type PartitionInterpretationProfile,
+  type PartitionInterpretationRegistryDefinition,
+  type PartitionInterpretationSource,
+} from './partitionInterpretation.js';
+import {
   composeWorldModules,
   instantiateRuleModule,
   validateRuleModuleDefinition,
@@ -110,6 +118,11 @@ export class MahjongLanguageAuthoringSession {
           'world-metadata', 'relation-type', 'artifact', 'literal',
           'cycle-pairs', 'null-records', 'zone-entry-candidates',
         ],
+        interpretationProfiles: [
+          'group patterns', 'bounded slots', 'group alternatives',
+          'whole-structure predicates', 'non-authoritative enumeration',
+          'authoritative physical proposal validation',
+        ],
         semanticAnalysis: [
           'provided resources', 'consumed bindings', 'patch targets', 'action semantics',
           'event producers', 'program reads', 'program writes', 'composition diagnostics',
@@ -120,12 +133,18 @@ export class MahjongLanguageAuthoringSession {
     if (uri === 'mahjongplus://schema/rule-module') {
       return {
         required: ['id', 'version'],
-        sections: ['parameters', 'requiredBindings', 'bindingSelectors', 'additions', 'patches', 'artifacts', 'metadata'],
+        sections: [
+          'parameters', 'requiredBindings', 'bindingSelectors', 'additions',
+          'patches', 'artifacts', 'interpretation registries', 'metadata',
+        ],
       };
     }
     if (uri === 'mahjongplus://stdlib') {
       return {
-        modules: ['progress batches', 'response gates', 'record gates', 'ledger transfer feasibility', 'ledger transfer commit'],
+        modules: [
+          'finite partition interpretation', 'progress batches', 'response gates',
+          'record gates', 'ledger transfer feasibility', 'ledger transfer commit',
+        ],
       };
     }
     if (uri === 'mahjongplus://schema/world') return { type: 'WorldSource' };
@@ -139,6 +158,20 @@ export class MahjongLanguageAuthoringSession {
     }
     if (name === 'mahjong.catalog.inspect') {
       return this.readResource(typeof input.uri === 'string' ? input.uri : 'mahjongplus://catalog/current');
+    }
+    if (name === 'mahjong.interpretation.compile-registry') {
+      return compileResponsePartitionInterpretationModule(
+        input.registry as PartitionInterpretationRegistryDefinition,
+      );
+    }
+    if (name === 'mahjong.interpretation.enumerate') {
+      const items = input.items as PartitionInterpretationItem[];
+      if (!Array.isArray(items)) throw new Error('items must be an array.');
+      return enumeratePartitionInterpretations(
+        input.profile as PartitionInterpretationProfile,
+        items,
+        input.source as PartitionInterpretationSource,
+      );
     }
     if (name === 'mahjong.module.list') {
       return this.listModules(typeof input.prefix === 'string' ? input.prefix : '');
