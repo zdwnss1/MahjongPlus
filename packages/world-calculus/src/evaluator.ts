@@ -155,14 +155,17 @@ function evaluateFormulaInternal(
   }
 }
 
-/** Isolated evaluator used by authoritative solving and public API consumers. */
+/** Isolated expression evaluator for callers that receive object values. */
 export function evaluateExpression(expression: CoreExpression, environment: CoreEvaluationEnvironment): unknown {
   return evaluateExpressionInternal(expression, environment, false);
 }
 
-/** Isolated evaluator used by authoritative solving and public API consumers. */
+/**
+ * Formula evaluation is intrinsically read-only and returns only a boolean, so it can avoid copying
+ * large world graphs while preserving the same closed expression semantics.
+ */
 export function evaluateFormula(formula: CoreFormula, environment: CoreEvaluationEnvironment): boolean {
-  return evaluateFormulaInternal(formula, environment, false);
+  return evaluateFormulaInternal(formula, environment, true);
 }
 
 /**
