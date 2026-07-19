@@ -11,6 +11,12 @@ import {
   type RuleModuleApplication,
   type RuleModuleDefinition,
 } from './ruleModules.js';
+import {
+  analyzeRuleModuleDefinition,
+  analyzeWorldSource,
+  diagnoseModuleComposition,
+  diagnoseWorldSemantics,
+} from './semanticAnalysis.js';
 
 export interface MahjongLanguageRuntimeAdapter {
   simulate?(input: Record<string, unknown>): unknown;
@@ -85,6 +91,10 @@ export class MahjongLanguageAuthoringSession {
           'ref', 'template', 'entity-index', 'zone-index', 'concat', 'if', 'eq', 'not',
           'map', 'filter', 'range', 'merge', 'arithmetic',
         ],
+        semanticAnalysis: [
+          'provided resources', 'consumed bindings', 'patch targets', 'action semantics',
+          'event producers', 'program reads', 'program writes', 'composition diagnostics',
+        ],
         invariant: 'Concrete rules are JSON-serializable RuleModuleDefinition data, never host functions.',
       };
     }
@@ -117,6 +127,9 @@ export class MahjongLanguageAuthoringSession {
     if (name === 'mahjong.module.validate') {
       return { errors: validateRuleModuleDefinition(input.module as RuleModuleDefinition) };
     }
+    if (name === 'mahjong.module.analyze') {
+      return analyzeRuleModuleDefinition(input.module as RuleModuleDefinition);
+    }
     if (name === 'mahjong.module.instantiate') {
       const world = input.world as WorldSource;
       const module = input.module as RuleModuleDefinition;
@@ -131,6 +144,13 @@ export class MahjongLanguageAuthoringSession {
       const applications = input.applications as RuleModuleApplication[];
       if (!Array.isArray(applications)) throw new Error('applications must be an array.');
       return composeWorldModules(world, applications);
+    }
+    if (name === 'mahjong.world.analyze') return analyzeWorldSource(input.world as WorldSource);
+    if (name === 'mahjong.world.diagnose') {
+      const applications = input.applications as RuleModuleApplication[] | undefined;
+      return applications
+        ? diagnoseModuleComposition(input.world as WorldSource, applications)
+        : { diagnostics: diagnoseWorldSemantics(input.world as WorldSource) };
     }
     if (name === 'mahjong.world.compile') return compileWorld(input.world as WorldSource);
     if (name === 'mahjong.world.simulate') return this.requireRuntime('simulate', input);
