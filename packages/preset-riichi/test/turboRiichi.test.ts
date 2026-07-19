@@ -160,7 +160,7 @@ describe('turbo riichi as continuing fact and policy data', () => {
     expect(respond(value, 'west-second-ron', 'west', 'turbo-riichi.win').outcome).toBe('executed');
     expect(respond(value, 'north-second-pass', 'north', 'response.pass').outcome).toBe('executed');
     expect(wins(value).map((entry) => `${entry.winnerId}:${entry.mode}`)).toEqual([
-      'south:ron', 'west:ron', 'south:tsumo', 'east:ron', 'west:ron',
+      'south:ron', 'west:ron', 'south:tsumo', 'west:ron', 'east:ron',
     ]);
     expect(value.scheduler.find('turn', 'await-draw', 'west')).toBeDefined();
   });
