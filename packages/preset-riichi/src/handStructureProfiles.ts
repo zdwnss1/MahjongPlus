@@ -101,9 +101,9 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
         { id: 'pair', count: 1, alternatives: ['group.pair.same-face'] },
       ],
     }],
-    maxProposals: 64,
-    candidateLimit: 2048,
-    maxSteps: 1_000_000,
+    maxProposals: 24,
+    candidateLimit: 256,
+    maxSteps: 250_000,
   },
   {
     id: 'structure.seven-pairs',
@@ -116,9 +116,9 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
       slots: [{ id: 'pair', count: 7, alternatives: ['group.pair.same-face'] }],
       predicate: compare('eq', distinctItemFaces, literal(7)),
     }],
-    maxProposals: 32,
-    candidateLimit: 4096,
-    maxSteps: 1_000_000,
+    maxProposals: 16,
+    candidateLimit: 64,
+    maxSteps: 100_000,
   },
   {
     id: 'structure.thirteen-orphans',
@@ -135,9 +135,9 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
       ],
       predicate: compare('eq', distinctItemFaces, literal(13)),
     }],
-    maxProposals: 32,
-    candidateLimit: 8192,
-    maxSteps: 1_500_000,
+    maxProposals: 16,
+    candidateLimit: 64,
+    maxSteps: 100_000,
   },
 ];
 
