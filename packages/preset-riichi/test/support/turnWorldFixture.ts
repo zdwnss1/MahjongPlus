@@ -15,6 +15,7 @@ export interface WinEvidenceSpec {
 export interface TurnWorldFixtureOptions {
   seats: string[];
   initialOwnerId: string;
+  initialNodeId?: 'await-draw' | 'await-discard';
   startingPoints?: number;
   hands: Record<string, PhysicalTileSpec[]>;
   wall: PhysicalTileSpec[];
@@ -91,6 +92,7 @@ export function buildTurnWorldFixture(options: TurnWorldFixtureOptions): TurnWor
   const awaitDrawNodeId = 'await-draw';
   const awaitDiscardNodeId = 'await-discard';
   const completeNodeId = 'complete';
+  const initialNodeId = options.initialNodeId ?? awaitDiscardNodeId;
   const drawActionId = 'draw';
   const discardActionId = 'discard';
   const endActionId = 'end-exhaustive-draw';
@@ -243,7 +245,7 @@ export function buildTurnWorldFixture(options: TurnWorldFixtureOptions): TurnWor
     ],
     procedures: [{
       id: turnProcedureId,
-      entryNodeId: awaitDiscardNodeId,
+      entryNodeId: initialNodeId,
       nodes: [{ id: awaitDiscardNodeId }, { id: awaitDrawNodeId }, { id: completeNodeId }],
     }],
     responseWindows: [],
