@@ -1,15 +1,43 @@
 import { describe, expect, it } from 'vitest';
-import { reduceEvents, solveFiniteDomain } from '@mahjongplus/world-calculus';
+import { reduceEvents, solveFiniteDomain, type FiniteDomainProgram } from '@mahjongplus/world-calculus';
 import {
-  eightConsecutiveWinsFixture,
-  localYakuFixtures,
-  lowSumManzuFlushFixture,
-  openNineGatesFixture,
-  stoneOnThreeYearsFixture,
-  thirteenMisfitsFixture,
+  instantiateRuleModule,
+  validateRuleModuleDefinition,
+  type RuleModuleDefinition,
+  type WorldSource,
+} from '@mahjongplus/world-language';
+import {
+  LOCAL_YAKU_MODULES,
+  type LocalYakuModuleArtifacts,
 } from '../src/localYaku.js';
 
-function matched(program: ReturnType<typeof openNineGatesFixture>['eligibility'], variables: Record<string, unknown>): boolean {
+const EMPTY_WORLD: WorldSource = {
+  schemaVersion: 'mwl/0.6',
+  id: 'fixture:empty-rule-module-world',
+  entities: [],
+  zones: [],
+  relations: [],
+  actions: [],
+  procedures: [],
+  responseWindows: [],
+  corePrograms: { constraints: [], reducers: [], rewrites: [] },
+  bootstrap: [],
+};
+
+function definition(id: string): RuleModuleDefinition {
+  const value = LOCAL_YAKU_MODULES.find((entry) => entry.id === id);
+  if (!value) throw new Error(`Missing module ${id}.`);
+  return value;
+}
+
+function artifacts(id: string, parameters: Record<string, unknown> = {}): LocalYakuModuleArtifacts {
+  return instantiateRuleModule(EMPTY_WORLD, {
+    definition: definition(id),
+    parameters,
+  }).artifacts as unknown as LocalYakuModuleArtifacts;
+}
+
+function matched(program: FiniteDomainProgram, variables: Record<string, unknown>): boolean {
   return solveFiniteDomain(program, { variables }).satisfiable;
 }
 
@@ -24,44 +52,42 @@ function tiles(suit: string, ranks: number[], prefix = suit) {
   }));
 }
 
-describe('local yaku as closed-calculus data', () => {
-  it('matches open nine gates without adding a hand-shape runtime primitive', () => {
-    const fixture = openNineGatesFixture(2);
+describe('local yaku as declarative Mahjong-language modules', () => {
+  it('matches open nine gates without a rule-specific constructor', () => {
+    const value = artifacts('local.open-nine-gates', { han: 2 });
     const hand = tiles('m', [1, 1, 1, 2, 3, 4, 5, 5, 6, 7, 8, 9, 9, 9]);
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, {
       hand, targetSuit: 'm', closed: false, winAccepted: true,
     })).toBe(true);
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, {
       hand, targetSuit: 'm', closed: true, winAccepted: true,
     })).toBe(false);
-    expect(fixture.award.contributions).toContainEqual({ dimension: 'han', operation: 'add', value: 2 });
+    expect(value.award.contributions).toContainEqual({ dimension: 'han', operation: 'add', value: 2 });
   });
 
-  it('matches the low-sum manzu flush through forall, map, sum and comparison', () => {
-    const fixture = lowSumManzuFlushFixture(35, 13);
+  it('matches the low-sum manzu flush through module parameters', () => {
+    const value = artifacts('local.low-sum-manzu-flush', { maxRankSum: 35, han: 13 });
     const low = tiles('m', [1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3, 4, 4]);
     const high = tiles('m', [1, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 7, 9]);
-    expect(matched(fixture.eligibility, { hand: low, winAccepted: true })).toBe(true);
-    expect(matched(fixture.eligibility, { hand: high, winAccepted: true })).toBe(false);
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, { hand: low, winAccepted: true })).toBe(true);
+    expect(matched(value.eligibility, { hand: high, winAccepted: true })).toBe(false);
+    expect(matched(value.eligibility, {
       hand: [...low.slice(0, 13), ...tiles('p', [1], 'p')], winAccepted: true,
     })).toBe(false);
   });
 
-  it('parameterizes whether stone-on-three-years accepts river-bottom ron', () => {
-    const events = [{
-      index: 0,
-      type: 'double-riichi.committed',
-      actorId: 'east',
-    }];
+  it('parameterizes whether the temporal rule accepts a river-bottom result', () => {
+    const events = [{ index: 0, type: 'double-riichi.committed', actorId: 'east' }];
     const win = { index: 20, actorId: 'east', closed: true, context: 'last-live-wall-discard' };
-    expect(matched(stoneOnThreeYearsFixture({ allowRiverBottom: true }).eligibility, {
-      events, win, winAccepted: true,
-    })).toBe(true);
-    expect(matched(stoneOnThreeYearsFixture({ allowRiverBottom: false }).eligibility, {
-      events, win, winAccepted: true,
-    })).toBe(false);
-    expect(matched(stoneOnThreeYearsFixture().eligibility, {
+    expect(matched(artifacts('local.stone-on-three-years', {
+      allowRiverBottom: true,
+      han: 13,
+    }).eligibility, { events, win, winAccepted: true })).toBe(true);
+    expect(matched(artifacts('local.stone-on-three-years', {
+      allowRiverBottom: false,
+      han: 13,
+    }).eligibility, { events, win, winAccepted: true })).toBe(false);
+    expect(matched(artifacts('local.stone-on-three-years').eligibility, {
       events: [...events, { index: 10, type: 'riichi.cancelled', actorId: 'east' }],
       win,
       winAccepted: true,
@@ -69,7 +95,7 @@ describe('local yaku as closed-calculus data', () => {
   });
 
   it('describes thirteen misfits with pair counts and forbidden pairwise distances', () => {
-    const fixture = thirteenMisfitsFixture();
+    const value = artifacts('local.thirteen-misfits');
     const hand = [
       ...tiles('m', [1, 6, 9], 'm'),
       ...tiles('s', [2, 5], 's'),
@@ -77,7 +103,7 @@ describe('local yaku as closed-calculus data', () => {
       ...tiles('z', [1, 2, 4, 5, 7], 'z'),
     ];
     expect(hand).toHaveLength(14);
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, {
       hand, dealer: true, phase: 'after-deal', callCount: 0, winAccepted: true,
     })).toBe(true);
 
@@ -86,36 +112,55 @@ describe('local yaku as closed-calculus data', () => {
     if (!p4) throw new Error('test tile missing');
     p4.face = 'p3';
     p4.rank = 3;
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, {
       hand: taatsu, dealer: true, phase: 'after-deal', callCount: 0, winAccepted: true,
     })).toBe(false);
-    expect(matched(fixture.eligibility, {
+    expect(matched(value.eligibility, {
       hand, dealer: false, phase: 'after-first-draw', callCount: 1, winAccepted: true,
     })).toBe(false);
   });
 
-  it('expresses eight consecutive wins as an event reducer plus a later threshold', () => {
-    const strict = eightConsecutiveWinsFixture({ resetOnDraw: true, requireIndependentYaku: true });
+  it('expresses eight consecutive wins through a reducer and parameterized threshold rule', () => {
+    const strict = artifacts('local.eight-consecutive-wins', {
+      trackedPlayerId: 'east',
+      resetOnDraw: true,
+      requireIndependentYaku: true,
+    });
     if (!strict.reducer) throw new Error('reducer missing');
     const wins = Array.from({ length: 8 }, (_, index) => ({
       index,
       type: 'hand.ended',
       winnerId: 'east',
     }));
-    const reduced = reduceEvents(strict.reducer, wins, { trackedPlayer: 'east', resetOnDraw: true });
+    const reduced = reduceEvents(strict.reducer, wins, {});
     expect(reduced.state).toEqual({ count: 8 });
     expect(matched(strict.eligibility, { streak: reduced.state, ordinaryHan: 1 })).toBe(true);
     expect(matched(strict.eligibility, { streak: reduced.state, ordinaryHan: 0 })).toBe(false);
 
-    const permissive = eightConsecutiveWinsFixture({ requireIndependentYaku: false });
+    const permissive = artifacts('local.eight-consecutive-wins', {
+      trackedPlayerId: 'east',
+      resetOnDraw: true,
+      requireIndependentYaku: false,
+    });
     expect(matched(permissive.eligibility, { streak: reduced.state, ordinaryHan: 0 })).toBe(true);
 
     const withDraw = [...wins.slice(0, 4), { index: 4, type: 'hand.drawn', winnerId: null }, ...wins.slice(4)];
-    expect(reduceEvents(strict.reducer, withDraw, { trackedPlayer: 'east', resetOnDraw: true }).state)
-      .toEqual({ count: 4 });
+    expect(reduceEvents(strict.reducer, withDraw, {}).state).toEqual({ count: 4 });
   });
 
-  it('keeps the five fixtures inside the existing closed expression vocabulary', () => {
+  it('is JSON-round-trippable and contains no concrete rule functions', () => {
+    for (const module of LOCAL_YAKU_MODULES) {
+      expect(validateRuleModuleDefinition(module)).toEqual([]);
+      const roundTrip = JSON.parse(JSON.stringify(module)) as RuleModuleDefinition;
+      expect(validateRuleModuleDefinition(roundTrip)).toEqual([]);
+      expect(instantiateRuleModule(EMPTY_WORLD, { definition: roundTrip }).manifest.hash)
+        .toBe(instantiateRuleModule(EMPTY_WORLD, { definition: module }).manifest.hash);
+    }
+    const moduleSource = JSON.stringify(LOCAL_YAKU_MODULES);
+    expect(moduleSource).not.toContain('function');
+  });
+
+  it('keeps all module artifacts inside the frozen expression vocabulary', () => {
     const allowedKinds = new Set([
       'literal', 'variable', 'path', 'list', 'record', 'if', 'arithmetic',
       'filter', 'map', 'concat', 'flatten', 'distinct', 'aggregate',
@@ -129,7 +174,7 @@ describe('local yaku as closed-calculus data', () => {
       if (typeof record.kind === 'string') kinds.add(record.kind);
       Object.values(record).forEach(visit);
     };
-    localYakuFixtures().forEach(visit);
+    LOCAL_YAKU_MODULES.forEach((module) => visit(instantiateRuleModule(EMPTY_WORLD, { definition: module }).artifacts));
     expect([...kinds].filter((kind) => !allowedKinds.has(kind))).toEqual([]);
   });
 });

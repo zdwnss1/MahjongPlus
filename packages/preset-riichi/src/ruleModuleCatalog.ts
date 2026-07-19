@@ -1,0 +1,6 @@
+import type { RuleModuleDefinition } from '@mahjongplus/world-language';
+import { LOCAL_YAKU_MODULES } from './localYaku.js';
+
+export const RIICHI_RULE_MODULES: RuleModuleDefinition[] = [
+  ...LOCAL_YAKU_MODULES,
+];
