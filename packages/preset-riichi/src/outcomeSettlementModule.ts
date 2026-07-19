@@ -93,14 +93,15 @@ function insertEffects(target: EffectDefinition[], patch: EffectPatchDefinition)
 }
 
 function applyEffectPatch(source: WorldSource, patch: EffectPatchDefinition): void {
-  if (patch.target.kind === 'action') {
-    insertEffects(requireAction(source, patch.target.actionId).effects, patch);
+  const target = patch.target;
+  if (target.kind === 'action') {
+    insertEffects(requireAction(source, target.actionId).effects, patch);
     return;
   }
-  const window = source.responseWindows?.find((entry) => entry.id === patch.target.windowId);
-  if (!window) throw new Error(`World module references unknown response window ${patch.target.windowId}.`);
-  const effects = window.selectionEffects[patch.target.actionId];
-  if (!effects) throw new Error(`Response window ${patch.target.windowId} has no effects for ${patch.target.actionId}.`);
+  const window = source.responseWindows?.find((entry) => entry.id === target.windowId);
+  if (!window) throw new Error(`World module references unknown response window ${target.windowId}.`);
+  const effects = window.selectionEffects[target.actionId];
+  if (!effects) throw new Error(`Response window ${target.windowId} has no effects for ${target.actionId}.`);
   insertEffects(effects, patch);
 }
 
