@@ -155,7 +155,10 @@ function responseWorld(handTiles: TileEntity[], sourceTile: TileEntity): WorldSo
 }
 
 function items(entities: TileEntity[]): PartitionInterpretationItem[] {
-  return entities.map((entity) => ({ id: entity.id, attributes: structuredClone(entity) }));
+  return entities.map((entity) => ({
+    id: entity.id,
+    attributes: structuredClone(entity) as unknown as Record<string, unknown>,
+  }));
 }
 
 function profile(id: string): PartitionInterpretationProfile {
