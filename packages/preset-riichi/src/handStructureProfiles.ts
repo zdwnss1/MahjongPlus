@@ -1,7 +1,6 @@
+import type { CoreExpression, CoreFormula } from '@mahjongplus/world-calculus';
 import {
   compileResponsePartitionInterpretationModule,
-  type CoreExpression,
-  type CoreFormula,
   type PartitionInterpretationProfile,
   type PartitionInterpretationRegistryDefinition,
   type RuleModuleDefinition,
@@ -153,10 +152,14 @@ export const RIICHI_RESPONSE_INTERPRETATION_REGISTRY: PartitionInterpretationReg
   allowedWindowDefinitionIds: ['riichi.discard-response'],
 };
 
+const compiledInterpretationModule = compileResponsePartitionInterpretationModule(
+  RIICHI_RESPONSE_INTERPRETATION_REGISTRY,
+);
+
 export const RIICHI_RESPONSE_INTERPRETATION_MODULE: RuleModuleDefinition = {
-  ...compileResponsePartitionInterpretationModule(RIICHI_RESPONSE_INTERPRETATION_REGISTRY),
+  ...compiledInterpretationModule,
   metadata: {
-    ...compileResponsePartitionInterpretationModule(RIICHI_RESPONSE_INTERPRETATION_REGISTRY).metadata,
+    ...compiledInterpretationModule.metadata,
     integrationStatus: 'partial',
     grantsScore: false,
     grantsWinSettlement: false,
