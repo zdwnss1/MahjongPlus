@@ -65,6 +65,7 @@ function setup() {
   const base = buildTurnWorldFixture({
     seats: SEATS,
     initialOwnerId: 'east',
+    initialNodeId: 'await-draw',
     hands,
     wall,
   });
