@@ -32,6 +32,7 @@ export interface MahjongLanguageRuntimeAdapter {
 
 export interface MahjongLanguageSessionOptions {
   modules?: RuleModuleDefinition[];
+  resources?: Record<string, unknown>;
   runtime?: MahjongLanguageRuntimeAdapter;
 }
 
@@ -53,11 +54,13 @@ function moduleKey(id: string, version: string): string {
 
 export class MahjongLanguageAuthoringSession {
   private readonly modules = new Map<string, RuleModuleDefinition>();
+  private readonly resources = new Map<string, unknown>();
   private readonly runtime?: MahjongLanguageRuntimeAdapter;
 
   constructor(options: MahjongLanguageSessionOptions = {}) {
     this.runtime = options.runtime;
     for (const module of options.modules ?? []) this.registerModule(module);
+    for (const [uri, resource] of Object.entries(options.resources ?? {})) this.registerResource(uri, resource);
   }
 
   registerModule(module: RuleModuleDefinition): void {
@@ -66,6 +69,12 @@ export class MahjongLanguageAuthoringSession {
     const key = moduleKey(module.id, module.version);
     if (this.modules.has(key)) throw new Error(`Duplicate rule module ${key}.`);
     this.modules.set(key, structuredClone(module));
+  }
+
+  registerResource(uri: string, resource: unknown): void {
+    if (!uri) throw new Error('Resource uri must be non-empty.');
+    if (this.resources.has(uri)) throw new Error(`Duplicate Mahjong language resource ${uri}.`);
+    this.resources.set(uri, structuredClone(resource));
   }
 
   listModules(prefix = ''): Array<{ id: string; version: string; title?: string }> {
@@ -83,6 +92,7 @@ export class MahjongLanguageAuthoringSession {
   }
 
   readResource(uri: string): unknown {
+    if (this.resources.has(uri)) return structuredClone(this.resources.get(uri));
     if (uri === 'mahjongplus://language/system-prompt') return MAHJONG_LANGUAGE_SYSTEM_PROMPT;
     if (uri === 'mahjongplus://language/spec') {
       return {
@@ -126,6 +136,9 @@ export class MahjongLanguageAuthoringSession {
     if (name === 'mahjong.schema.describe') {
       const section = typeof input.section === 'string' ? input.section : 'language';
       return section === 'catalog' ? structuredClone(MAHJONG_LANGUAGE_MCP_CATALOG) : this.readResource('mahjongplus://language/spec');
+    }
+    if (name === 'mahjong.catalog.inspect') {
+      return this.readResource(typeof input.uri === 'string' ? input.uri : 'mahjongplus://catalog/current');
     }
     if (name === 'mahjong.module.list') {
       return this.listModules(typeof input.prefix === 'string' ? input.prefix : '');
