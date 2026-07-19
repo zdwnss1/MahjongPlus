@@ -6,4 +6,4 @@ export * from './handStructureProfiles.js';
 export * from './outcomeSettlementPrograms.js';
 export * from './outcomeSettlementModule.js';
 export * from './ruleModuleCatalog.js';
-export * from './semanticCatalog.js';
+export * from './currentSemanticCatalog.js';
