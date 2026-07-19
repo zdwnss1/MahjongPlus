@@ -12,22 +12,5 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
-      - name: Capture tests
-        id: tests
-        shell: bash
-        run: |
-          set +e
-          npm test > test.log 2>&1
-          status=$?
-          cat test.log
-          echo "status=$status" >> "$GITHUB_OUTPUT"
-          exit 0
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: turbo-module-test-log
-          path: test.log
-      - name: Fail on test error
-        if: steps.tests.outputs.status != '0'
-        run: exit 1
+      - run: npm test
       - run: npm run build
