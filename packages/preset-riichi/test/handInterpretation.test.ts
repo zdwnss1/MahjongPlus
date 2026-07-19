@@ -283,7 +283,7 @@ describe('authoritative finite partition hand interpretation', () => {
       proposal: malformed,
     });
     expect(receipt.outcome).toBe('rejected');
-    expect(receipt.failures.map((entry) => entry.id)).toContain('service.riichi-response-hand-interpretation.submit-response.valid');
+    expect(receipt.failures.map((entry) => entry.id)).toContain('interpretation.submit-response.valid');
     expect(accepted(value)).toEqual([]);
     expect(value.store.outgoingRelations({ kind: 'player', id: 'south' }, 'can-win-on')).toEqual([]);
   });
