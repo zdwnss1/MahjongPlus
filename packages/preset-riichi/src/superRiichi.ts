@@ -19,6 +19,7 @@ export interface SuperRiichiRuleOptions {
   indicatorPolicy?: SuperRiichiIndicatorPolicy;
   standardStake?: number;
   superStake?: number;
+  riichiHan?: number;
   extraIndicatorsPerUse?: number;
   standardExtraIndicatorCap?: number;
   extensionTilesPerUse?: number;
@@ -75,6 +76,14 @@ const concat = (...sources: CoreExpression[]): CoreExpression => ({ kind: 'conca
 
 const PLAYERS = ['east', 'south', 'west', 'north'] as const;
 
+const FACT_TRACK_IDS = {
+  transfers: 'track:resource-transfers',
+  declarations: 'track:public-declarations',
+  contributions: 'track:score-contributions',
+  discardPolicies: 'track:discard-policies',
+  furitenPolicies: 'track:furiten-policies',
+} as const;
+
 function zone(id: string, kind: string, entityIds: string[]): ZoneRecord {
   return {
     id,
@@ -91,6 +100,14 @@ function zone(id: string, kind: string, entityIds: string[]): ZoneRecord {
   };
 }
 
+function factTrack(id: string, factType: string): EntityRecord {
+  return {
+    id,
+    kind: 'fact-track',
+    components: { factTrack: { factType, records: [] } },
+  };
+}
+
 function normalizeOptions(options: SuperRiichiRuleOptions): SuperRiichiRuleFixture['policy'] {
   const policy = {
     id: options.id ?? 'rule:super-riichi',
@@ -99,6 +116,7 @@ function normalizeOptions(options: SuperRiichiRuleOptions): SuperRiichiRuleFixtu
     indicatorPolicy: options.indicatorPolicy ?? 'standard-cap',
     standardStake: options.standardStake ?? 1000,
     superStake: options.superStake ?? 5000,
+    riichiHan: options.riichiHan ?? 1,
     extraIndicatorsPerUse: options.extraIndicatorsPerUse ?? 2,
     standardExtraIndicatorCap: options.standardExtraIndicatorCap ?? 4,
     extensionTilesPerUse: options.extensionTilesPerUse ?? 4,
@@ -111,6 +129,7 @@ function normalizeOptions(options: SuperRiichiRuleOptions): SuperRiichiRuleFixtu
     if (typeof value === 'number' && (!Number.isInteger(value) || value < 0)) throw new Error(`${name} must be a non-negative integer.`);
   }
   if (policy.extraIndicatorsPerUse < 1) throw new Error('extraIndicatorsPerUse must be positive.');
+  if (policy.riichiHan < 0) throw new Error('riichiHan must not be negative.');
   if (policy.superStake <= policy.standardStake) throw new Error('superStake must exceed the standard stake.');
   if (policy.indicatorPolicy === 'unbounded-extend') {
     if (policy.extensionTilesPerUse < policy.extraIndicatorsPerUse) throw new Error('Wall extension must cover all revealed indicators.');
@@ -166,7 +185,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
       },
     },
   };
-  const track: EntityRecord = {
+  const indicatorTrack: EntityRecord = {
     id: 'track:dora-indicators',
     kind: 'reveal-track',
     components: {
@@ -186,15 +205,28 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
     kind: 'rule-instance',
     components: { rulePolicy: structuredClone(policy) },
   };
-  const initialEntities = [...players, ledger, track, rule, ...tiles];
-  const ledgerIndex = players.length;
-  const trackIndex = ledgerIndex + 1;
+  const factTracks = [
+    factTrack(FACT_TRACK_IDS.transfers, 'resource-transfer'),
+    factTrack(FACT_TRACK_IDS.declarations, 'public-declaration'),
+    factTrack(FACT_TRACK_IDS.contributions, 'score-contribution'),
+    factTrack(FACT_TRACK_IDS.discardPolicies, 'discard-policy'),
+    factTrack(FACT_TRACK_IDS.furitenPolicies, 'furiten-policy'),
+  ];
+  const initialEntities = [...players, ledger, indicatorTrack, ...factTracks, rule, ...tiles];
+  const entityIndex = (id: string): number => {
+    const index = initialEntities.findIndex((entity) => entity.id === id);
+    if (index < 0) throw new Error(`Missing fixture entity ${id}`);
+    return index;
+  };
+  const ledgerIndex = entityIndex(ledger.id);
+  const indicatorTrackIndex = entityIndex(indicatorTrack.id);
+  const trackIndex = Object.fromEntries(Object.values(FACT_TRACK_IDS).map((id) => [id, entityIndex(id)])) as Record<string, number>;
 
   const player = firstMatching(entities, 'entity', compare('eq', path(variable('entity'), 'id'), variable('actorId')));
   const accounts = path(entities, String(ledgerIndex), 'components', 'ledger', 'accounts');
   const actorAccount = firstMatching(accounts, 'account', compare('eq', path(variable('account'), 'id'), variable('actorId')));
   const actorBalance = path(actorAccount, 'balance');
-  const trackValue = path(entities, String(trackIndex), 'components', 'revealTrack');
+  const trackValue = path(entities, String(indicatorTrackIndex), 'components', 'revealTrack');
   const revealedCount = path(trackValue, 'revealedCount');
   const declaredActors = path(trackValue, 'declaredActors');
   const liveEntries = path(zones, '0', 'entries');
@@ -288,7 +320,19 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
     tileId: variable('tileId'),
     audience: literal('all'),
     source: literal('super-riichi'),
+    correlationId: variable('actionEntityId'),
   }));
+
+  const factRecord = (fields: Record<string, CoreExpression>): CoreExpression => record({
+    correlationId: variable('actionEntityId'),
+    sourceRuleId: literal(policy.id),
+    actorId: variable('actorId'),
+    mode,
+    ...fields,
+  });
+  const trackRecordsPath = (id: string): string[] => [
+    'world', 'entities', String(trackIndex[id]), 'components', 'factTrack', 'records',
+  ];
 
   const operations: RewriteOperation[] = [
     {
@@ -297,13 +341,67 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
       value: updatedAccounts,
     },
     {
+      kind: 'append',
+      path: trackRecordsPath(FACT_TRACK_IDS.transfers),
+      value: factRecord({
+        asset: literal('points'),
+        fromAccountId: variable('actorId'),
+        toAccountId: literal('riichi-pot'),
+        amount: pointCost,
+      }),
+    },
+    {
+      kind: 'append',
+      path: trackRecordsPath(FACT_TRACK_IDS.declarations),
+      value: factRecord({
+        declarationType: literal('riichi'),
+        audience: literal('all'),
+        state: literal('published'),
+      }),
+    },
+    {
+      kind: 'append',
+      path: trackRecordsPath(FACT_TRACK_IDS.contributions),
+      value: factRecord({
+        subjectId: variable('actorId'),
+        dimension: literal('han'),
+        operation: literal('add'),
+        amount: literal(policy.riichiHan),
+        stage: literal('base-yaku'),
+        lifetime: literal('until-hand-end'),
+      }),
+    },
+    {
+      kind: 'append',
+      path: trackRecordsPath(FACT_TRACK_IDS.discardPolicies),
+      value: factRecord({
+        subjectId: variable('actorId'),
+        policyType: literal('discard-selection'),
+        allowedSource: literal('latest-draw'),
+        consequence: literal('reject'),
+        lifetime: literal('until-hand-end'),
+      }),
+    },
+    {
+      kind: 'append',
+      path: trackRecordsPath(FACT_TRACK_IDS.furitenPolicies),
+      value: factRecord({
+        subjectId: variable('actorId'),
+        policyType: literal('missed-win-lock'),
+        triggerEventType: literal('win-claim.passed'),
+        resultingState: literal('furiten'),
+        furitenClass: literal('riichi-pass'),
+        lifetime: literal('until-hand-end'),
+      }),
+    },
+    {
       kind: 'set',
-      path: ['world', 'entities', String(trackIndex), 'components', 'revealTrack', 'declaredActors'],
+      path: ['world', 'entities', String(indicatorTrackIndex), 'components', 'revealTrack', 'declaredActors'],
       value: concat(declaredActors, list(variable('actorId'))),
     },
     {
       kind: 'set',
-      path: ['world', 'entities', String(trackIndex), 'components', 'revealTrack', 'revealedCount'],
+      path: ['world', 'entities', String(indicatorTrackIndex), 'components', 'revealTrack', 'revealedCount'],
       value: choose(
         isSuper,
         arithmetic('add', revealedCount, literal(policy.extraIndicatorsPerUse)),
@@ -312,7 +410,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
     },
     {
       kind: 'set',
-      path: ['world', 'entities', String(trackIndex), 'components', 'revealTrack', 'capacity'],
+      path: ['world', 'entities', String(indicatorTrackIndex), 'components', 'revealTrack', 'capacity'],
       value: choose(
         all(isSuper, { kind: 'boolean', value: policy.indicatorPolicy === 'unbounded-extend' }),
         arithmetic('add', path(trackValue, 'capacity'), literal(policy.extraIndicatorsPerUse)),
@@ -321,7 +419,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
     },
     {
       kind: 'set',
-      path: ['world', 'entities', String(trackIndex), 'components', 'revealTrack', 'revealed'],
+      path: ['world', 'entities', String(indicatorTrackIndex), 'components', 'revealTrack', 'revealed'],
       value: choose(isSuper, concat(oldRevealed, newRevealRecords), oldRevealed),
     },
   ];
@@ -351,7 +449,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
         id: 'standard',
         label: '立直',
         summary: `${policy.standardStake} 点供托。`,
-        preview: { pointCost: policy.standardStake, extraIndicators: 0 },
+        preview: { pointCost: policy.standardStake, extraIndicators: 0, han: policy.riichiHan },
       },
       {
         id: 'super',
@@ -360,6 +458,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
         preview: {
           pointCost: policy.superStake,
           extraIndicators: policy.extraIndicatorsPerUse,
+          han: policy.riichiHan,
           scope: policy.scope,
           indicatorPolicy: policy.indicatorPolicy,
           wallExtensionTiles: policy.indicatorPolicy === 'unbounded-extend' ? policy.extensionTilesPerUse : 0,
@@ -368,6 +467,7 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
     ],
   };
 
+  const staticEntity = (id: string, entityKind: string) => ({ kind: 'entity', entityKind, id: { kind: 'literal', value: id } } as const);
   const source: WorldSource = {
     schemaVersion: 'mwl/0.4',
     id: `super-riichi-fixture:${policy.scope}:${policy.indicatorPolicy}`,
@@ -387,8 +487,44 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
         { kind: 'core.rewrite', programId: rewrite.id },
         {
           kind: 'event.emit',
-          eventType: 'riichi.declared',
+          eventType: 'resource.transferred',
           subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(ledger.id, 'resource-ledger'), staticEntity(FACT_TRACK_IDS.transfers, 'fact-track')],
+          payload: { mode: { kind: 'context', path: 'params.mode' }, ruleId: policy.id },
+        },
+        {
+          kind: 'event.emit',
+          eventType: 'declaration.published',
+          subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(FACT_TRACK_IDS.declarations, 'fact-track')],
+          payload: { mode: { kind: 'context', path: 'params.mode' }, declarationType: 'riichi', ruleId: policy.id },
+        },
+        {
+          kind: 'event.emit',
+          eventType: 'score-contribution.granted',
+          subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(FACT_TRACK_IDS.contributions, 'fact-track')],
+          payload: { mode: { kind: 'context', path: 'params.mode' }, dimension: 'han', ruleId: policy.id },
+        },
+        {
+          kind: 'event.emit',
+          eventType: 'discard-policy.activated',
+          subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(FACT_TRACK_IDS.discardPolicies, 'fact-track')],
+          payload: { mode: { kind: 'context', path: 'params.mode' }, ruleId: policy.id },
+        },
+        {
+          kind: 'event.emit',
+          eventType: 'furiten-policy.activated',
+          subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(FACT_TRACK_IDS.furitenPolicies, 'fact-track')],
+          payload: { mode: { kind: 'context', path: 'params.mode' }, ruleId: policy.id },
+        },
+        {
+          kind: 'event.emit',
+          eventType: 'reveal-track.updated',
+          subjects: [{ kind: 'actor' }],
+          objects: [staticEntity(indicatorTrack.id, 'reveal-track')],
           payload: { mode: { kind: 'context', path: 'params.mode' }, ruleId: policy.id },
         },
       ],
@@ -401,11 +537,14 @@ export function createSuperRiichiRuleFixture(options: SuperRiichiRuleOptions = {
       preset: 'fixture/super-riichi',
       actionOffers: [offer],
       policy,
+      factChannels: Object.values(FACT_TRACK_IDS),
       languageNotes: {
-        scope: 'Expressed as an ordinary action constraint.',
-        payment: 'Expressed as a generic resource-ledger rewrite.',
-        reveal: 'Expressed as public records on an ordered reveal track.',
-        unboundedWall: 'Expressed as a generic ordered-zone boundary migration.',
+        atomicBundle: 'One action atomically commits independent facts sharing the same action/correlation id.',
+        stake: 'Resource consumers read resource-transfer facts only.',
+        scoring: 'Win evaluation reads score-contribution facts only.',
+        discard: 'Discard adjudication reads discard-policy facts only.',
+        furiten: 'Win-claim adjudication reads trigger-based furiten-policy facts only.',
+        reveal: 'Observation and dora consumers read the reveal track only.',
       },
     },
   };
