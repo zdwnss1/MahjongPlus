@@ -31,20 +31,30 @@ export function readPath(target: unknown, path: readonly string[]): unknown {
   return current;
 }
 
-export function evaluateExpression(expression: CoreExpression, environment: CoreEvaluationEnvironment): unknown {
+function output<T>(value: T, readonly: boolean): T {
+  return readonly ? value : clone(value);
+}
+
+function evaluateExpressionInternal(
+  expression: CoreExpression,
+  environment: CoreEvaluationEnvironment,
+  readonly: boolean,
+): unknown {
+  const expressionValue = (value: CoreExpression) => evaluateExpressionInternal(value, environment, readonly);
+  const formulaValue = (value: CoreFormula) => evaluateFormulaInternal(value, environment, readonly);
   switch (expression.kind) {
-    case 'literal': return clone(expression.value);
-    case 'variable': return clone(environment.variables[expression.name]);
-    case 'path': return clone(readPath(evaluateExpression(expression.target, environment), expression.path));
-    case 'list': return expression.items.map((item) => evaluateExpression(item, environment));
+    case 'literal': return output(expression.value, readonly);
+    case 'variable': return output(environment.variables[expression.name], readonly);
+    case 'path': return output(readPath(expressionValue(expression.target), expression.path), readonly);
+    case 'list': return expression.items.map(expressionValue);
     case 'record': return Object.fromEntries(Object.entries(expression.fields)
-      .map(([key, value]) => [key, evaluateExpression(value, environment)]));
-    case 'if': return evaluateFormula(expression.condition, environment)
-      ? evaluateExpression(expression.then, environment)
-      : evaluateExpression(expression.else, environment);
+      .map(([key, value]) => [key, expressionValue(value)]));
+    case 'if': return formulaValue(expression.condition)
+      ? expressionValue(expression.then)
+      : expressionValue(expression.else);
     case 'arithmetic': {
-      const left = asNumber(evaluateExpression(expression.left, environment));
-      const right = asNumber(evaluateExpression(expression.right, environment));
+      const left = asNumber(expressionValue(expression.left));
+      const right = asNumber(expressionValue(expression.right));
       if (expression.operator === 'add') return left + right;
       if (expression.operator === 'subtract') return left - right;
       if (expression.operator === 'multiply') return left * right;
@@ -55,33 +65,42 @@ export function evaluateExpression(expression: CoreExpression, environment: Core
       if (right === 0) throw new Error('Modulo by zero.');
       return left % right;
     }
-    case 'filter': return asArray(evaluateExpression(expression.source, environment))
-      .filter((entry) => evaluateFormula(expression.where, withVariable(environment, expression.as, entry)))
-      .map(clone);
-    case 'map': return asArray(evaluateExpression(expression.source, environment))
-      .map((entry) => evaluateExpression(expression.select, withVariable(environment, expression.as, entry)));
+    case 'filter': return asArray(expressionValue(expression.source))
+      .filter((entry) => evaluateFormulaInternal(
+        expression.where,
+        withVariable(environment, expression.as, entry),
+        readonly,
+      ))
+      .map((entry) => output(entry, readonly));
+    case 'map': return asArray(expressionValue(expression.source))
+      .map((entry) => evaluateExpressionInternal(
+        expression.select,
+        withVariable(environment, expression.as, entry),
+        readonly,
+      ));
     case 'concat': return expression.sources
-      .flatMap((source) => asArray(evaluateExpression(source, environment)))
-      .map(clone);
-    case 'flatten': return asArray(evaluateExpression(expression.source, environment))
+      .flatMap((source) => asArray(expressionValue(source)))
+      .map((entry) => output(entry, readonly));
+    case 'flatten': return asArray(expressionValue(expression.source))
       .flatMap((entry) => asArray(entry))
-      .map(clone);
+      .map((entry) => output(entry, readonly));
     case 'distinct': {
       const seen = new Set<string>();
-      return asArray(evaluateExpression(expression.source, environment)).filter((entry) => {
+      return asArray(expressionValue(expression.source)).filter((entry) => {
         const key = JSON.stringify(entry);
         if (seen.has(key)) return false;
         seen.add(key);
         return true;
-      }).map(clone);
+      }).map((entry) => output(entry, readonly));
     }
     case 'aggregate': {
-      const source = asArray(evaluateExpression(expression.source, environment));
+      const source = asArray(expressionValue(expression.source));
       if (expression.operator === 'count') return source.length;
       const values = expression.value
-        ? source.map((entry) => evaluateExpression(
+        ? source.map((entry) => evaluateExpressionInternal(
             expression.value as CoreExpression,
             withVariable(environment, expression.as ?? 'item', entry),
+            readonly,
           ))
         : source;
       const numbers = values.map(asNumber);
@@ -92,23 +111,37 @@ export function evaluateExpression(expression: CoreExpression, environment: Core
   }
 }
 
-export function evaluateFormula(formula: CoreFormula, environment: CoreEvaluationEnvironment): boolean {
+function evaluateFormulaInternal(
+  formula: CoreFormula,
+  environment: CoreEvaluationEnvironment,
+  readonly: boolean,
+): boolean {
+  const expressionValue = (value: CoreExpression) => evaluateExpressionInternal(value, environment, readonly);
+  const formulaValue = (value: CoreFormula) => evaluateFormulaInternal(value, environment, readonly);
   switch (formula.kind) {
     case 'boolean': return formula.value;
-    case 'not': return !evaluateFormula(formula.value, environment);
-    case 'all': return formula.values.every((value) => evaluateFormula(value, environment));
-    case 'any': return formula.values.some((value) => evaluateFormula(value, environment));
-    case 'contains': return asArray(evaluateExpression(formula.collection, environment))
-      .some((entry) => primitiveEqual(entry, evaluateExpression(formula.value, environment)));
+    case 'not': return !formulaValue(formula.value);
+    case 'all': return formula.values.every(formulaValue);
+    case 'any': return formula.values.some(formulaValue);
+    case 'contains': return asArray(expressionValue(formula.collection))
+      .some((entry) => primitiveEqual(entry, expressionValue(formula.value)));
     case 'quantify': {
-      const values = asArray(evaluateExpression(formula.source, environment));
+      const values = asArray(expressionValue(formula.source));
       return formula.quantifier === 'exists'
-        ? values.some((entry) => evaluateFormula(formula.where, withVariable(environment, formula.as, entry)))
-        : values.every((entry) => evaluateFormula(formula.where, withVariable(environment, formula.as, entry)));
+        ? values.some((entry) => evaluateFormulaInternal(
+            formula.where,
+            withVariable(environment, formula.as, entry),
+            readonly,
+          ))
+        : values.every((entry) => evaluateFormulaInternal(
+            formula.where,
+            withVariable(environment, formula.as, entry),
+            readonly,
+          ));
     }
     case 'compare': {
-      const left = evaluateExpression(formula.left, environment);
-      const right = evaluateExpression(formula.right, environment);
+      const left = expressionValue(formula.left);
+      const right = expressionValue(formula.right);
       if (formula.operator === 'eq') return primitiveEqual(left, right);
       if (formula.operator === 'neq') return !primitiveEqual(left, right);
       if (typeof left !== 'number' || typeof right !== 'number') {
@@ -120,4 +153,27 @@ export function evaluateFormula(formula: CoreFormula, environment: CoreEvaluatio
       return left >= right;
     }
   }
+}
+
+/** Isolated evaluator used by authoritative solving and public API consumers. */
+export function evaluateExpression(expression: CoreExpression, environment: CoreEvaluationEnvironment): unknown {
+  return evaluateExpressionInternal(expression, environment, false);
+}
+
+/** Isolated evaluator used by authoritative solving and public API consumers. */
+export function evaluateFormula(formula: CoreFormula, environment: CoreEvaluationEnvironment): boolean {
+  return evaluateFormulaInternal(formula, environment, false);
+}
+
+/**
+ * Read-only evaluator for pure compiler backends. It returns references into the supplied environment
+ * and must never be exposed to mutating callbacks. The expression language itself has no mutation nodes.
+ */
+export function evaluateExpressionReadonly(expression: CoreExpression, environment: CoreEvaluationEnvironment): unknown {
+  return evaluateExpressionInternal(expression, environment, true);
+}
+
+/** Read-only formula evaluation for bounded compiler optimizations. */
+export function evaluateFormulaReadonly(formula: CoreFormula, environment: CoreEvaluationEnvironment): boolean {
+  return evaluateFormulaInternal(formula, environment, true);
 }
