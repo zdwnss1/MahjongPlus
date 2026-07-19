@@ -1,6 +1,27 @@
-# Settlement batch pipeline
+# Declarative outcome-settlement modules
 
-This slice turns a ready outcome batch into an atomic resource settlement without adding a win-specific runtime path.
+This slice turns a ready outcome batch into an atomic resource settlement without adding an outcome-specific runtime path or a rule-specific compiler function.
+
+## Hard boundary
+
+Concrete rules may export serializable module data only. Runtime and standard-library APIs may expose generic functions such as:
+
+- `compileOutcomeSettlementPrograms`
+- `composeOutcomeSettlementModule`
+- `appendWorldModuleEntities`
+- `createWorldEntityIndex`
+
+A concrete rule name must not appear in a public function, compiler branch, capability id or standard-library macro.
+
+The module profile supplies:
+
+- record-track bindings;
+- ledger binding;
+- outcome item-key, subject and mode expressions;
+- evidence relation shape;
+- transfer-shape expressions;
+- system actor, asset and minimum-balance policy;
+- effect patches that connect an outcome producer to the generic consumer.
 
 ## Layer separation
 
@@ -11,55 +32,61 @@ The pipeline keeps four durable record classes separate:
 3. **Settlement batch** — an ordered composition of accepted proposals into one atomic transfer set.
 4. **Settlement transaction** — evidence that the transfer set and lifecycle changes were committed together.
 
-A win record is not a score proposal. A score proposal is not a committed payment.
+An outcome record is not an interpretation proposal. A proposal is not a committed transfer.
+
+## Module-owned storage
+
+The outcome-settlement module appends its own system actor and record tracks to the world before bindings are compiled. The source rule model does not own:
+
+- interpretation profiles;
+- settlement actor ids;
+- transfer amounts;
+- settlement tracks;
+- transaction storage.
+
+This allows the same source rule world to be composed with a different interpreter, ledger policy or no settlement layer at all.
 
 ## Explicit actions
 
-The fixture exposes three system actions:
+The module exposes three ordinary actions:
 
 - `pipeline.interpret-outcome-item`
 - `pipeline.compose-settlement`
 - `pipeline.commit-settlement`
 
-They are ordinary adjudicated actions. The configured settlement actor does not bypass constraints. Every action is journalled, revisioned, idempotent by attempt id, and transactional.
+They are normal adjudicated actions. The configured system actor does not bypass constraints. Every action is journalled, revisioned, idempotent by attempt id and transactional.
 
 An automatic procedure may submit these actions later; automation is not part of their semantics.
 
-## Progress batches
+## Declarative interpreter profile
 
-`createProgressBatchRewrite` is the generic primitive behind response and interpretation progress. It records:
+The interpreter is a data object. Its expressions use template variables such as `item`, `outcome`, `batchId` and `itemKey`. `compileOutcomeSettlementPrograms` substitutes those variables into the selected durable facts before producing closed calculus programs.
 
-- declared items;
-- distinct processed keys;
-- a source identifier;
-- `collecting` or `ready` state.
+A test profile may declare, for example:
 
-The older response-batch macro is now a convenience wrapper that fixes the source field to `sourceWindowId`.
+```text
+when item.mode == "single-payer"
+  produce one transfer from outcome.metadata.sourceActorId to item.actorId
 
-## Interpretation
+when item.mode == "shared-payer"
+  produce one transfer from each configured participant except item.actorId
+```
 
-The turbo fixture uses a deliberately simple fixed-transfer profile so the pipeline can be executed end to end:
-
-- ron creates one payer-to-winner transfer;
-- tsumo creates one transfer from each other seat to the winner.
-
-These values are fixture parameters, not riichi scoring. A production interpreter will replace this module with hand interpretation, yaku, fu, limits, responsibility and payment-shape proposals without changing the batch consumer or ledger commit mechanism.
+The compiler does not know those mode names or transfer shapes.
 
 Each source item may be interpreted once. The interpretation progress batch becomes ready only after every outcome item has exactly one accepted proposal.
 
 ## Composition
 
-Composition preserves the authoritative outcome-item order even when interpretation actions arrive in another order. It concatenates each ordered proposal's transfer intents into one settlement batch.
+Composition preserves authoritative outcome-item order even when interpretation actions arrive in another order. It concatenates each ordered proposal's transfer intents into one settlement batch.
 
-This is the boundary for future conflict policies such as:
+This is the boundary for policies such as:
 
-- select all or select one proposal;
+- select all or one proposal;
 - reject incompatible proposal dimensions;
 - allocate a shared claim to first, last, split or nobody;
-- combine responsibility and ordinary payers;
+- combine several payer classes;
 - cap aggregate loss or allow a configured negative balance.
-
-The current fixture selects all accepted proposals.
 
 ## Atomic ledger validation
 
@@ -71,26 +98,26 @@ current balance - aggregate outgoing + aggregate incoming
 
 and compares the result with the configured minimum balance.
 
-Thus two payments that are individually affordable but jointly overdraw the payer are rejected as one batch.
+Thus two transfers that are individually affordable but jointly overdraw the payer are rejected as one batch.
 
-`createSimpleLedgerTransferCommitRewrite` then updates every account in one world rewrite. A second rewrite marks the settlement committed, marks the outcome consumed, and appends a transaction record. Both rewrites are in the same action transaction, so later failure restores all balances and statuses.
+`createSimpleLedgerTransferCommitRewrite` then updates every account in one world rewrite. A second rewrite marks the settlement committed, marks the outcome consumed and appends a transaction record. Both rewrites are in the same action transaction, so later failure restores all balances and statuses.
 
 ## Continuation gate
 
-Draw, discard and exhaustive-draw actions are blocked while any outcome batch is `collecting` or `ready`. They become available only when the settlement commit marks the source outcome `consumed`.
+Configured actions are blocked while any outcome batch is `collecting` or `ready`. They become available only when settlement commit marks the source outcome `consumed`.
 
-All-pass response windows create no outcome batch and therefore require no empty settlement.
+An event path that creates no outcome batch requires no empty settlement.
 
-## Closed-language invariant
+## Public API invariant
 
-This change adds no calculus node and no `WorldRuntime` branch. The standard-library helpers expand into the existing fixed vocabulary: filtering, mapping, quantification, arithmetic, aggregation and generic rewrites.
+The package root exports only generic world, compiler and settlement APIs. Concrete rule fixture builders remain internal test scaffolding and are not public package functions. Tests reject local-rule names in the public index and in generic settlement source files.
 
 ## Current boundary
 
-The pipeline is executable and covers multi-ron and self-draw outcomes. The interpretation profile is intentionally synthetic. Production work still needs:
+The generic pipeline is executable. Production work still needs declarative profiles for:
 
-- hand-structure interpretation;
-- yaku/fu/limit proposal generation;
-- shared pot, honba and dealer-continuation policies;
+- physical-structure interpretation;
+- contribution and limit proposal generation;
+- shared resources and continuation policies;
 - bankruptcy and match-end policies;
 - a scheduler that submits ready pipeline actions automatically.

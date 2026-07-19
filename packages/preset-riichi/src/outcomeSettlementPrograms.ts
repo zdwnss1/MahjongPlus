@@ -28,12 +28,61 @@ import {
   record,
   variable,
 } from './fixtureDsl.js';
-import type { TurboRiichiModel } from './turboRiichiModel.js';
-import { TURBO_PLAYERS } from './turboRiichiTypes.js';
 
 const flatten = (source: CoreExpression): CoreExpression => ({ kind: 'flatten', source });
 
-export interface TurboSettlementPrograms {
+export interface RecordTrackBinding {
+  entityId: string;
+  component: string;
+}
+
+export interface LedgerBinding {
+  entityId: string;
+  component: string;
+  accountsField?: string;
+}
+
+export interface OutcomeSettlementBindings {
+  entityIndex(id: string): string;
+  tracks: {
+    outcomes: RecordTrackBinding;
+    proposals: RecordTrackBinding;
+    interpretationBatches: RecordTrackBinding;
+    settlementBatches: RecordTrackBinding;
+    transactions: RecordTrackBinding;
+  };
+  ledger: LedgerBinding;
+}
+
+export interface EvidenceBinding {
+  relationType: string;
+  sourceKind: string;
+  targetKind: string;
+  sourceId: CoreExpression;
+  targetId: CoreExpression;
+}
+
+export interface TransferShapeDefinition {
+  when: CoreFormula;
+  transfers: CoreExpression;
+}
+
+export interface OutcomeInterpreterDefinition {
+  id: string;
+  systemActorId: string;
+  outcomeKind: string;
+  outcomeSourceField: string;
+  allowedModes: string[];
+  itemKey: CoreExpression;
+  subjectId: CoreExpression;
+  mode: CoreExpression;
+  evidence: EvidenceBinding;
+  transferShapes: TransferShapeDefinition[];
+  asset: string;
+  minimumBalance: number;
+}
+
+export interface OutcomeSettlementPrograms {
   constraints: {
     interpretItem: FiniteDomainProgram;
     composeSettlement: FiniteDomainProgram;
@@ -42,8 +91,6 @@ export interface TurboSettlementPrograms {
     noPendingOutcomes: FiniteDomainProgram;
   };
   rewrites: {
-    ronOutcome: RewriteProgram;
-    selfOutcome: RewriteProgram;
     appendInterpretation: RewriteProgram;
     interpretationProgress: RewriteProgram;
     composeSettlement: RewriteProgram;
@@ -52,8 +99,60 @@ export interface TurboSettlementPrograms {
   };
 }
 
-export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSettlementPrograms {
-  const { policy, entityIndex } = model;
+function recordsExpression(
+  worldEntities: CoreExpression,
+  entityIndex: OutcomeSettlementBindings['entityIndex'],
+  binding: RecordTrackBinding,
+): CoreExpression {
+  return path(worldEntities, entityIndex(binding.entityId), 'components', binding.component, 'records');
+}
+
+function recordsPath(
+  entityIndex: OutcomeSettlementBindings['entityIndex'],
+  binding: RecordTrackBinding,
+): string[] {
+  return ['world', 'entities', entityIndex(binding.entityId), 'components', binding.component, 'records'];
+}
+
+function bindTemplate<T>(value: T, bindings: Record<string, CoreExpression>): T {
+  if (Array.isArray(value)) return value.map((entry) => bindTemplate(entry, bindings)) as T;
+  if (!value || typeof value !== 'object') return value;
+  const object = value as Record<string, unknown>;
+  if (object.kind === 'variable' && typeof object.name === 'string' && bindings[object.name]) {
+    return structuredClone(bindings[object.name]) as T;
+  }
+  return Object.fromEntries(Object.entries(object)
+    .map(([key, entry]) => [key, bindTemplate(entry, bindings)])) as T;
+}
+
+function transferShapeExpression(
+  definition: OutcomeInterpreterDefinition,
+  bindings: Record<string, CoreExpression>,
+): CoreExpression {
+  if (definition.transferShapes.length === 0) throw new Error('At least one transfer shape is required.');
+  return [...definition.transferShapes].reverse().reduce<CoreExpression>(
+    (fallback, shape) => choose(
+      bindTemplate(shape.when, bindings),
+      bindTemplate(shape.transfers, bindings),
+      fallback,
+    ),
+    literal([]),
+  );
+}
+
+export function compileOutcomeSettlementPrograms(
+  bindings: OutcomeSettlementBindings,
+  definition: OutcomeInterpreterDefinition,
+): OutcomeSettlementPrograms {
+  if (!definition.id) throw new Error('Outcome interpreter id is required.');
+  if (!definition.systemActorId) throw new Error('Outcome interpreter actor id is required.');
+  if (!definition.outcomeKind) throw new Error('Outcome kind is required.');
+  if (!definition.outcomeSourceField) throw new Error('Outcome source field is required.');
+  if (definition.allowedModes.length === 0) throw new Error('At least one outcome mode is required.');
+  if (!definition.asset) throw new Error('Settlement asset is required.');
+  if (!Number.isFinite(definition.minimumBalance)) throw new Error('Minimum balance must be finite.');
+
+  const { entityIndex } = bindings;
   const world = variable('world');
   const worldEntities = path(world, 'entities');
   const worldRelations = path(world, 'relations');
@@ -61,47 +160,18 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
   const batchId = path(params, 'batchId');
   const itemKey = path(params, 'itemKey');
 
-  const outcomeBatches = path(
-    worldEntities,
-    entityIndex('track:outcome-batches'),
-    'components',
-    'outcomeBatches',
-    'records',
-  );
-  const interpretationProposals = path(
-    worldEntities,
-    entityIndex('track:interpretation-proposals'),
-    'components',
-    'interpretationProposals',
-    'records',
-  );
-  const interpretationBatches = path(
-    worldEntities,
-    entityIndex('track:interpretation-batches'),
-    'components',
-    'interpretationBatches',
-    'records',
-  );
-  const settlementBatches = path(
-    worldEntities,
-    entityIndex('track:settlement-batches'),
-    'components',
-    'settlementBatches',
-    'records',
-  );
-  const settlementTransactions = path(
-    worldEntities,
-    entityIndex('track:settlement-transactions'),
-    'components',
-    'settlementTransactions',
-    'records',
-  );
+  const outcomeBatches = recordsExpression(worldEntities, entityIndex, bindings.tracks.outcomes);
+  const interpretationProposals = recordsExpression(worldEntities, entityIndex, bindings.tracks.proposals);
+  const interpretationBatches = recordsExpression(worldEntities, entityIndex, bindings.tracks.interpretationBatches);
+  const settlementBatches = recordsExpression(worldEntities, entityIndex, bindings.tracks.settlementBatches);
+  const settlementTransactions = recordsExpression(worldEntities, entityIndex, bindings.tracks.transactions);
+  const accountsField = bindings.ledger.accountsField ?? 'accounts';
   const accounts = path(
     worldEntities,
-    entityIndex('ledger:points'),
+    entityIndex(bindings.ledger.entityId),
     'components',
-    'ledger',
-    'accounts',
+    bindings.ledger.component,
+    accountsField,
   );
 
   const matchingOutcomes = filter(
@@ -114,9 +184,16 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
   const matchingItems = filter(
     outcomeItems,
     'item',
-    compare('eq', path(variable('item'), 'actionEntityId'), itemKey),
+    compare('eq', definition.itemKey, itemKey),
   );
   const item = path(matchingItems, '0');
+  const templateBindings = { outcome, item, batchId, itemKey };
+  const selectedItemKey = bindTemplate(definition.itemKey, templateBindings);
+  const selectedSubjectId = bindTemplate(definition.subjectId, templateBindings);
+  const selectedMode = bindTemplate(definition.mode, templateBindings);
+  const evidenceSourceId = bindTemplate(definition.evidence.sourceId, templateBindings);
+  const evidenceTargetId = bindTemplate(definition.evidence.targetId, templateBindings);
+
   const proposalsForBatch = filter(
     interpretationProposals,
     'proposal',
@@ -131,93 +208,50 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     worldRelations,
     'relation',
     all(
-      compare('eq', path(variable('relation'), 'type'), literal('can-win-on')),
-      compare('eq', path(variable('relation'), 'source', 'kind'), literal('player')),
-      compare('eq', path(variable('relation'), 'source', 'id'), path(item, 'actorId')),
-      compare('eq', path(variable('relation'), 'target', 'kind'), literal('tile')),
-      compare('eq', path(variable('relation'), 'target', 'id'), path(outcome, 'metadata', 'sourceEntityId')),
+      compare('eq', path(variable('relation'), 'type'), literal(definition.evidence.relationType)),
+      compare('eq', path(variable('relation'), 'source', 'kind'), literal(definition.evidence.sourceKind)),
+      compare('eq', path(variable('relation'), 'source', 'id'), evidenceSourceId),
+      compare('eq', path(variable('relation'), 'target', 'kind'), literal(definition.evidence.targetKind)),
+      compare('eq', path(variable('relation'), 'target', 'id'), evidenceTargetId),
     ),
   );
 
-  const engineActor = compare('eq', variable('actorId'), literal(policy.settlementActorId));
-  const interpretItem = externalConstraint('turbo-settlement.interpret-item', all(
-    engineActor,
+  const systemActor = compare('eq', variable('actorId'), literal(definition.systemActorId));
+  const interpretItem = externalConstraint(`${definition.id}.interpret-item`, all(
+    systemActor,
     compare('eq', aggregate('count', matchingOutcomes), literal(1)),
     compare('eq', path(outcome, 'state'), literal('ready')),
-    compare('eq', path(outcome, 'kind'), literal('win-outcomes')),
+    compare('eq', path(outcome, 'kind'), literal(definition.outcomeKind)),
     compare('eq', aggregate('count', matchingItems), literal(1)),
+    compare('eq', selectedItemKey, itemKey),
     compare('eq', aggregate('count', proposalForItem), literal(0)),
     compare('eq', aggregate('count', evidenceRelations), literal(1)),
-    any(
-      compare('eq', path(item, 'mode'), literal('ron')),
-      compare('eq', path(item, 'mode'), literal('tsumo')),
-    ),
+    { kind: 'contains', collection: literal(definition.allowedModes), value: selectedMode },
   ));
 
-  const ronTransfers = list(record({
-    asset: literal('points'),
-    fromAccountId: path(outcome, 'metadata', 'sourceActorId'),
-    toAccountId: path(item, 'actorId'),
-    amount: literal(policy.ronPayment),
-    sourceBatchId: batchId,
-    sourceItemKey: itemKey,
-    reason: literal('fixture-ron-interpretation'),
-  }));
-  const tsumoPayers = filter(
-    literal(TURBO_PLAYERS),
-    'payerId',
-    compare('neq', variable('payerId'), path(item, 'actorId')),
-  );
-  const tsumoTransfers = map(tsumoPayers, 'payerId', record({
-    asset: literal('points'),
-    fromAccountId: variable('payerId'),
-    toAccountId: path(item, 'actorId'),
-    amount: literal(policy.tsumoPaymentEach),
-    sourceBatchId: batchId,
-    sourceItemKey: itemKey,
-    reason: literal('fixture-tsumo-interpretation'),
-  }));
-  const interpretedTransfers = choose(
-    compare('eq', path(item, 'mode'), literal('ron')),
-    ronTransfers,
-    tsumoTransfers,
-  );
+  const interpretedTransfers = transferShapeExpression(definition, templateBindings);
   const appendInterpretation: RewriteProgram = {
-    id: 'turbo-settlement.append-interpretation',
+    id: `${definition.id}.append-interpretation`,
     operations: [{
       kind: 'set',
-      path: [
-        'world',
-        'entities',
-        entityIndex('track:interpretation-proposals'),
-        'components',
-        'interpretationProposals',
-        'records',
-      ],
+      path: recordsPath(entityIndex, bindings.tracks.proposals),
       value: concat(interpretationProposals, list(record({
         sourceBatchId: batchId,
         sourceItemKey: itemKey,
-        subjectId: path(item, 'actorId'),
-        mode: path(item, 'mode'),
+        subjectId: selectedSubjectId,
+        mode: selectedMode,
         state: literal('accepted'),
         evidenceRelationId: path(evidenceRelations, '0', 'id'),
-        sourceEntityId: path(outcome, 'metadata', 'sourceEntityId'),
+        sourceEntityId: evidenceTargetId,
         transfers: interpretedTransfers,
-        interpreterId: literal('fixture:fixed-transfer-profile'),
+        interpreterId: literal(definition.id),
         interpretedByActionId: variable('actionEntityId'),
       }))),
     }],
   };
   const interpretationProgress = createProgressBatchRewrite({
-    id: 'turbo-settlement.progress-interpretation',
-    batchesPath: [
-      'world',
-      'entities',
-      entityIndex('track:interpretation-batches'),
-      'components',
-      'interpretationBatches',
-      'records',
-    ],
+    id: `${definition.id}.progress-interpretation`,
+    batchesPath: recordsPath(entityIndex, bindings.tracks.interpretationBatches),
     batches: interpretationBatches,
     batchId,
     batchKind: literal('interpretation'),
@@ -239,6 +273,10 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     'batch',
     compare('eq', path(variable('batch'), 'sourceBatchId'), batchId),
   );
+  const outcomeItemKey = bindTemplate(definition.itemKey, {
+    ...templateBindings,
+    item: variable('outcomeItem'),
+  });
   const everyItemCovered: CoreFormula = quantify(
     'forall',
     outcomeItems,
@@ -248,11 +286,7 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
       aggregate('count', filter(
         proposalsForBatch,
         'proposal',
-        compare(
-          'eq',
-          path(variable('proposal'), 'sourceItemKey'),
-          path(variable('outcomeItem'), 'actionEntityId'),
-        ),
+        compare('eq', path(variable('proposal'), 'sourceItemKey'), outcomeItemKey),
       )),
       literal(1),
     ),
@@ -269,20 +303,12 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     firstMatching(
       proposalsForBatch,
       'proposal',
-      compare(
-        'eq',
-        path(variable('proposal'), 'sourceItemKey'),
-        path(variable('outcomeItem'), 'actionEntityId'),
-      ),
+      compare('eq', path(variable('proposal'), 'sourceItemKey'), outcomeItemKey),
     ),
   );
-  const orderedTransfers = flatten(map(
-    orderedProposals,
-    'proposal',
-    path(variable('proposal'), 'transfers'),
-  ));
-  const composeSettlement = externalConstraint('turbo-settlement.compose', all(
-    engineActor,
+  const orderedTransfers = flatten(map(orderedProposals, 'proposal', path(variable('proposal'), 'transfers')));
+  const composeSettlement = externalConstraint(`${definition.id}.compose`, all(
+    systemActor,
     compare('eq', aggregate('count', matchingOutcomes), literal(1)),
     compare('eq', path(outcome, 'state'), literal('ready')),
     compare('eq', aggregate('count', matchingInterpretationBatches), literal(1)),
@@ -294,17 +320,10 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     compare('eq', aggregate('count', existingSettlement), literal(0)),
   ));
   const composeSettlementRewrite: RewriteProgram = {
-    id: 'turbo-settlement.compose-batch',
+    id: `${definition.id}.compose-batch`,
     operations: [{
       kind: 'set',
-      path: [
-        'world',
-        'entities',
-        entityIndex('track:settlement-batches'),
-        'components',
-        'settlementBatches',
-        'records',
-      ],
+      path: recordsPath(entityIndex, bindings.tracks.settlementBatches),
       value: concat(settlementBatches, list(record({
         id: batchId,
         kind: literal('resource-transfer'),
@@ -312,12 +331,7 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
         proposalKeys: map(orderedProposals, 'proposal', path(variable('proposal'), 'sourceItemKey')),
         transfers: orderedTransfers,
         state: literal('ready'),
-        metadata: record({
-          continuingHand: path(outcome, 'metadata', 'continuingHand'),
-          sourceActorId: path(outcome, 'metadata', 'sourceActorId'),
-          sourceEntityId: path(outcome, 'metadata', 'sourceEntityId'),
-          sourceEventId: path(outcome, 'metadata', 'sourceEventId'),
-        }),
+        metadata: path(outcome, 'metadata'),
         composedByActionId: variable('actionEntityId'),
       }))),
     }],
@@ -335,30 +349,31 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     'transaction',
     compare('eq', path(variable('transaction'), 'sourceBatchId'), batchId),
   );
-  const commitSettlement = externalConstraint('turbo-settlement.commit', all(
-    engineActor,
+  const commitSettlement = externalConstraint(`${definition.id}.commit`, all(
+    systemActor,
     compare('eq', aggregate('count', matchingSettlements), literal(1)),
     compare('eq', path(settlement, 'state'), literal('ready')),
+    compare('eq', aggregate('count', matchingOutcomes), literal(1)),
     compare('eq', path(outcome, 'state'), literal('ready')),
     compare('gt', aggregate('count', settlementTransfers), literal(0)),
     compare('eq', aggregate('count', existingTransactions), literal(0)),
   ));
   const ledgerFeasible = createSimpleLedgerTransferFeasibilityConstraint({
-    id: 'turbo-settlement.ledger-feasible',
+    id: `${definition.id}.ledger-feasible`,
     accounts,
     transfers: settlementTransfers,
-    minimumBalance: literal(policy.minimumSettlementBalance),
-    expectedAsset: literal('points'),
+    minimumBalance: literal(definition.minimumBalance),
+    expectedAsset: literal(definition.asset),
   });
   const ledgerCommit = createSimpleLedgerTransferCommitRewrite({
-    id: 'turbo-settlement.commit-ledger',
+    id: `${definition.id}.commit-ledger`,
     accountsPath: [
       'world',
       'entities',
-      entityIndex('ledger:points'),
+      entityIndex(bindings.ledger.entityId),
       'components',
-      'ledger',
-      'accounts',
+      bindings.ledger.component,
+      accountsField,
     ],
     accounts,
     transfers: settlementTransfers,
@@ -390,7 +405,7 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
       record({
         id: path(variable('batch'), 'id'),
         kind: path(variable('batch'), 'kind'),
-        sourceExposureId: path(variable('batch'), 'sourceExposureId'),
+        [definition.outcomeSourceField]: path(variable('batch'), definition.outcomeSourceField),
         items: path(variable('batch'), 'items'),
         processedKeys: path(variable('batch'), 'processedKeys'),
         state: literal('consumed'),
@@ -401,45 +416,24 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
     ),
   );
   const commitSettlementRewrite: RewriteProgram = {
-    id: 'turbo-settlement.commit-status',
+    id: `${definition.id}.commit-status`,
     operations: [
       {
         kind: 'set',
-        path: [
-          'world',
-          'entities',
-          entityIndex('track:settlement-batches'),
-          'components',
-          'settlementBatches',
-          'records',
-        ],
+        path: recordsPath(entityIndex, bindings.tracks.settlementBatches),
         value: updatedSettlementBatches,
       },
       {
         kind: 'set',
-        path: [
-          'world',
-          'entities',
-          entityIndex('track:outcome-batches'),
-          'components',
-          'outcomeBatches',
-          'records',
-        ],
+        path: recordsPath(entityIndex, bindings.tracks.outcomes),
         value: updatedOutcomeBatches,
       },
       {
         kind: 'set',
-        path: [
-          'world',
-          'entities',
-          entityIndex('track:settlement-transactions'),
-          'components',
-          'settlementTransactions',
-          'records',
-        ],
+        path: recordsPath(entityIndex, bindings.tracks.transactions),
         value: concat(settlementTransactions, list(record({
           sourceBatchId: batchId,
-          asset: literal('points'),
+          asset: literal(definition.asset),
           transfers: settlementTransfers,
           state: literal('committed'),
           committedByActionId: variable('actionEntityId'),
@@ -449,85 +443,13 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
   };
 
   const noPendingOutcomes = createNoMatchingRecordsConstraint({
-    id: 'turbo-settlement.no-pending-outcomes',
+    id: `${definition.id}.no-pending-outcomes`,
     records: outcomeBatches,
     as: 'batch',
     where: any(
       compare('eq', path(variable('batch'), 'state'), literal('collecting')),
       compare('eq', path(variable('batch'), 'state'), literal('ready')),
     ),
-  });
-
-  const selectedRonItems = map(
-    path(variable('window'), 'selected'),
-    'selected',
-    record({
-      actorId: path(variable('selected'), 'actorId'),
-      actionId: path(variable('selected'), 'actionId'),
-      actionEntityId: path(variable('selected'), 'actionEntityId'),
-      mode: literal('ron'),
-    }),
-  );
-  const ronOutcome = createProgressBatchRewrite({
-    id: 'turbo-settlement.progress-ron-outcome',
-    batchesPath: [
-      'world',
-      'entities',
-      entityIndex('track:outcome-batches'),
-      'components',
-      'outcomeBatches',
-      'records',
-    ],
-    batches: outcomeBatches,
-    batchId: path(variable('window'), 'id'),
-    batchKind: literal('win-outcomes'),
-    sourceField: 'sourceExposureId',
-    sourceId: path(variable('window'), 'sourceEventId'),
-    items: selectedRonItems,
-    currentItemKey: path(variable('submission'), 'actionEntityId'),
-    metadata: record({
-      sourceActorId: path(variable('window'), 'sourceActorId'),
-      sourceEventId: path(variable('window'), 'sourceEventId'),
-      sourceEntityId: path(variable('window'), 'sourceEntityId'),
-      continuingHand: literal(true),
-    }),
-  });
-
-  const latestDraws = path(variable('reducers'), 'turbo-riichi.latest-draw', 'latestDraws');
-  const actorDraw = firstMatching(
-    latestDraws,
-    'draw',
-    compare('eq', path(variable('draw'), 'subjectId'), variable('actorId')),
-  );
-  const selfItems = list(record({
-    actorId: variable('actorId'),
-    actionId: literal('turbo-riichi.self-win'),
-    actionEntityId: variable('actionEntityId'),
-    mode: literal('tsumo'),
-  }));
-  const selfOutcome = createProgressBatchRewrite({
-    id: 'turbo-settlement.progress-self-outcome',
-    batchesPath: [
-      'world',
-      'entities',
-      entityIndex('track:outcome-batches'),
-      'components',
-      'outcomeBatches',
-      'records',
-    ],
-    batches: outcomeBatches,
-    batchId: path(actorDraw, 'exposureId'),
-    batchKind: literal('win-outcomes'),
-    sourceField: 'sourceExposureId',
-    sourceId: path(actorDraw, 'exposureId'),
-    items: selfItems,
-    currentItemKey: variable('actionEntityId'),
-    metadata: record({
-      sourceActorId: variable('actorId'),
-      sourceEventId: path(actorDraw, 'exposureId'),
-      sourceEntityId: path(actorDraw, 'tileId'),
-      continuingHand: literal(true),
-    }),
   });
 
   return {
@@ -539,8 +461,6 @@ export function createTurboSettlementPrograms(model: TurboRiichiModel): TurboSet
       noPendingOutcomes,
     },
     rewrites: {
-      ronOutcome,
-      selfOutcome,
       appendInterpretation,
       interpretationProgress,
       composeSettlement: composeSettlementRewrite,
