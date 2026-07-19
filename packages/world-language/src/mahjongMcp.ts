@@ -29,7 +29,7 @@ const objectSchema = (
 });
 
 export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
-  protocolVersion: 'mahjong-language-mcp/0.1',
+  protocolVersion: 'mahjong-language-mcp/0.2',
   tools: [
     {
       name: 'mahjong.schema.describe',
@@ -52,6 +52,11 @@ export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
       inputSchema: objectSchema({ module: { type: 'object' } }, ['module']),
     },
     {
+      name: 'mahjong.module.analyze',
+      description: 'Parse one rule module into provided resources, consumed bindings, patches, action semantics, events and core-program read/write paths.',
+      inputSchema: objectSchema({ module: { type: 'object' } }, ['module']),
+    },
+    {
       name: 'mahjong.module.instantiate',
       description: 'Expand one RuleModuleDefinition against a base WorldSource using explicit parameters and bindings.',
       inputSchema: objectSchema({
@@ -65,6 +70,19 @@ export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
       name: 'mahjong.world.compose',
       description: 'Compose an ordered list of declarative modules into one WorldSource and return module manifests and artifacts.',
       inputSchema: objectSchema({ world: { type: 'object' }, applications: { type: 'array', items: { type: 'object' } } }, ['world', 'applications']),
+    },
+    {
+      name: 'mahjong.world.analyze',
+      description: 'Parse a WorldSource into physical inventory, actions, procedures, response windows, event producers, programs and installed module manifests.',
+      inputSchema: objectSchema({ world: { type: 'object' } }, ['world']),
+    },
+    {
+      name: 'mahjong.world.diagnose',
+      description: 'Diagnose a WorldSource or an ordered module composition for missing bindings, invalid references, duplicate ids and overlapping rewrite paths.',
+      inputSchema: objectSchema({
+        world: { type: 'object' },
+        applications: { type: 'array', items: { type: 'object' } },
+      }, ['world']),
     },
     {
       name: 'mahjong.world.compile',
@@ -152,17 +170,19 @@ Physical reality is the minimum semantic floor. Every tile is an independent ent
 Authoring workflow:
 1. Read mahjongplus://language/spec and mahjongplus://schema/rule-module.
 2. Inspect the base world schema and the modules already installed.
-3. Represent the requested change as one or more RuleModuleDefinition objects with explicit parameter schemas and required bindings.
-4. Use module additions and patches instead of editing host code.
-5. Validate the module.
-6. Instantiate it against the target world with explicit bindings.
-7. Compile the resulting world.
-8. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, and physical-identity cases.
-9. Search for bounded counterexamples to the intended invariant.
-10. Explain dependencies, reads, writes, and lifecycle effects before presenting the change.
+3. Analyze existing modules and the target world before authoring a change.
+4. Represent the requested change as one or more RuleModuleDefinition objects with explicit parameter schemas and required bindings.
+5. Use module additions and patches instead of editing host code.
+6. Validate and analyze the module.
+7. Diagnose the proposed composition before instantiation.
+8. Instantiate it against the target world with explicit bindings.
+9. Compile the resulting world.
+10. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, and physical-identity cases.
+11. Search for bounded counterexamples to the intended invariant.
+12. Explain dependencies, reads, writes, and lifecycle effects before presenting the change.
 
 Never hide semantics in a label such as riichi, yaku, win, settlement, meld, or dora. Decompose them into independent facts: resource transfers, declarations, score contributions, discard policies, missed-opportunity policies, visibility records, outcome batches, interpretation proposals, settlement batches, and transactions.
 
 A new core primitive is admissible only when the existing kernel cannot express the behavior, no standard-library macro can expand it, the primitive is domain-agnostic, deterministic, bounded, compositional, statically analyzable, and useful in at least three unrelated domains. Otherwise keep it in module data or the standard library.
 
-When modifying a world, call tools rather than describing hypothetical code. Do not claim success until module validation, world compilation, simulation, and the relevant counterexample search all pass.`;
+When modifying a world, call tools rather than describing hypothetical code. Do not claim success until module validation, semantic analysis, composition diagnosis, world compilation, simulation, and the relevant counterexample search all pass.`;
