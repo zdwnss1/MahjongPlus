@@ -59,6 +59,20 @@ function wins(value: WorldRuntime) {
   ).records;
 }
 
+function responseBatches(value: WorldRuntime) {
+  return track<{
+    records: Array<{
+      id: string;
+      kind: string;
+      sourceWindowId: string;
+      items: Array<{ actorId: string; actionId: string; actionEntityId: string }>;
+      processedKeys: string[];
+      state: string;
+      metadata: Record<string, unknown>;
+    }>;
+  }>(value, 'track:response-batches', 'responseBatches').records;
+}
+
 function balance(value: WorldRuntime, id: string): number {
   const ledger = value.store.readComponent<{ accounts: Array<{ id: string; balance: number }> }>(
     'ledger:points',
@@ -135,17 +149,45 @@ describe('turbo riichi as continuing fact and policy data', () => {
     expect(new Set(events.map((event) => event.causedByActionId)).size).toBe(1);
   });
 
-  it('forces tsumogiri and records simultaneous wins without ending the hand', () => {
+  it('gates optimistic continuation until the response window resolves', () => {
+    const { fixture, value } = setup();
+    declare(value, fixture.ids.tripletIds);
+    expect(discard(value, 'east-tsumogiri', 'east', fixture.ids.initialDrawId).outcome).toBe('executed');
+
+    expect(value.scheduler.find('turn', 'await-draw', 'south')).toBeDefined();
+    const blocked = act(value, 'south-early-draw', 'south', 'draw');
+    expect(blocked.outcome).toBe('rejected');
+    expect(blocked.failures.map((failure) => failure.id)).toContain('draw.responses-complete');
+
+    respond(value, 'south-pass', 'south', 'response.pass');
+    respond(value, 'west-pass', 'west', 'response.pass');
+    respond(value, 'north-pass', 'north', 'response.pass');
+    expect(act(value, 'south-draw', 'south', 'draw').outcome).toBe('executed');
+    expect(responseBatches(value)).toEqual([]);
+  });
+
+  it('forces tsumogiri and records simultaneous wins as one ready batch without ending the hand', () => {
     const { fixture, value } = setup();
     expect(declare(value, fixture.ids.tripletIds).outcome).toBe('executed');
 
     expect(discard(value, 'east-hand-discard', 'east', 'tile:east:filler:0').outcome).toBe('rejected');
     expect(discard(value, 'east-tsumogiri', 'east', fixture.ids.initialDrawId).outcome).toBe('executed');
+    const windowId = openWindow(value).id;
     expect(respond(value, 'south-ron', 'south', 'turbo-riichi.win').outcome).toBe('executed');
     expect(respond(value, 'west-ron', 'west', 'turbo-riichi.win').outcome).toBe('executed');
     expect(respond(value, 'north-pass', 'north', 'response.pass').outcome).toBe('executed');
 
     expect(wins(value).map((entry) => entry.winnerId)).toEqual(['south', 'west']);
+    const batches = responseBatches(value);
+    expect(batches).toHaveLength(1);
+    expect(batches[0].id).toBe(windowId);
+    expect(batches[0].kind).toBe('continuing-win');
+    expect(batches[0].items.map((entry) => entry.actorId)).toEqual(['south', 'west']);
+    expect(batches[0].processedKeys).toHaveLength(2);
+    expect(new Set(batches[0].processedKeys).size).toBe(2);
+    expect(batches[0].state).toBe('ready');
+    expect(batches[0].metadata.continuingHand).toBe(true);
+
     expect(value.scheduler.find('turn', 'await-draw', 'south')).toBeDefined();
     expect(value.scheduler.find('turn', 'complete', 'south')).toBeUndefined();
     expect(value.journal.all().some((event) => event.type === 'hand.ended')).toBe(false);
@@ -162,6 +204,8 @@ describe('turbo riichi as continuing fact and policy data', () => {
     expect(wins(value).map((entry) => `${entry.winnerId}:${entry.mode}`)).toEqual([
       'south:ron', 'west:ron', 'south:tsumo', 'west:ron', 'east:ron',
     ]);
+    expect(responseBatches(value)).toHaveLength(2);
+    expect(responseBatches(value).every((batch) => batch.state === 'ready')).toBe(true);
     expect(value.scheduler.find('turn', 'await-draw', 'west')).toBeDefined();
   });
 
@@ -184,7 +228,7 @@ describe('turbo riichi as continuing fact and policy data', () => {
     expect(wins(value).map((entry) => entry.winnerId)).toEqual(['south', 'west', 'east']);
   });
 
-  it('ends only when the live wall is exhausted', () => {
+  it('ends only when the live wall is exhausted and no response window is open', () => {
     const { fixture, value } = setup({ wallTileCount: 1 });
     declare(value, fixture.ids.tripletIds);
     discard(value, 'east-discard', 'east', fixture.ids.initialDrawId);
@@ -194,6 +238,7 @@ describe('turbo riichi as continuing fact and policy data', () => {
 
     expect(act(value, 'south-draw', 'south', 'draw').outcome).toBe('executed');
     expect(discard(value, 'south-discard', 'south', fixture.ids.firstWallTileId).outcome).toBe('executed');
+    expect(act(value, 'early-end', 'west', 'end-exhaustive-draw').outcome).toBe('rejected');
     respond(value, 'east-pass', 'east', 'response.pass');
     respond(value, 'west-pass-2', 'west', 'response.pass');
     respond(value, 'north-pass-2', 'north', 'response.pass');
