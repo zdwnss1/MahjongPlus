@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { compileWorld } from '@mahjongplus/world-language';
+import { compileWorld, instantiateRuleModule } from '@mahjongplus/world-language';
 import { WorldRuntime } from '@mahjongplus/world-runtime';
-import { createSuperRiichiRuleFixture } from '../src/superRiichi.js';
+import { SUPER_RIICHI_MODULE } from '../src/superRiichiModule.js';
+import { buildPhysicalFixture } from './physicalFixture.js';
 
 const TRACKS = {
   transfers: 'track:resource-transfers',
@@ -11,8 +12,14 @@ const TRACKS = {
   furitenPolicies: 'track:furiten-policies',
 } as const;
 
-function runtime(options: Parameters<typeof createSuperRiichiRuleFixture>[0] = {}) {
-  return new WorldRuntime(compileWorld(createSuperRiichiRuleFixture(options).source));
+function runtime(parameters: Record<string, unknown> = {}) {
+  const physical = buildPhysicalFixture();
+  const result = instantiateRuleModule(physical.source, {
+    definition: SUPER_RIICHI_MODULE,
+    parameters,
+    bindings: physical.bindings,
+  });
+  return new WorldRuntime(compileWorld(result.world));
 }
 
 function declare(value: WorldRuntime, attemptId: string, actorId: string, mode: 'standard' | 'super') {
@@ -39,8 +46,8 @@ const BUNDLE_EVENT_TYPES = [
   'reveal-track.updated',
 ];
 
-describe('riichi declaration as an atomic fact bundle', () => {
-  it('commits independent stake, declaration, scoring, discard, furiten, and reveal facts', () => {
+describe('declaration mode as an atomic fact bundle', () => {
+  it('commits independent stake, declaration, scoring, discard, furiten and reveal facts', () => {
     const value = runtime({ scope: 'owner-only', ownerId: 'east' });
     expect(declare(value, 'south-standard', 'south', 'standard').outcome).toBe('executed');
 
@@ -83,7 +90,7 @@ describe('riichi declaration as an atomic fact bundle', () => {
     }
   });
 
-  it('lets super mode change payment and reveal while preserving other riichi modules', () => {
+  it('lets enhanced mode change payment and reveal while preserving other fact channels', () => {
     const value = runtime({ scope: 'global', indicatorPolicy: 'standard-cap' });
     expect(declare(value, 'east-super', 'east', 'super').outcome).toBe('executed');
 
@@ -100,7 +107,7 @@ describe('riichi declaration as an atomic fact bundle', () => {
     expect(reveal?.revealed).toHaveLength(2);
   });
 
-  it('can alter the scoring contribution without changing stake, lock, or reveal semantics', () => {
+  it('alters the scoring contribution without changing stake, lock or reveal semantics', () => {
     const value = runtime({ riichiHan: 2, indicatorPolicy: 'standard-cap' });
     expect(declare(value, 'east-standard', 'east', 'standard').outcome).toBe('executed');
 
