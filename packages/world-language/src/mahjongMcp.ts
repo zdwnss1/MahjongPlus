@@ -29,12 +29,17 @@ const objectSchema = (
 });
 
 export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
-  protocolVersion: 'mahjong-language-mcp/0.3',
+  protocolVersion: 'mahjong-language-mcp/0.4',
   tools: [
     {
       name: 'mahjong.schema.describe',
       description: 'Read the closed calculus, rule-module template operations, world schema, binding selectors, and generic standard-library vocabulary.',
       inputSchema: objectSchema({ section: { type: 'string' } }),
+    },
+    {
+      name: 'mahjong.catalog.inspect',
+      description: 'Read the injected machine-readable semantic catalog for the current game or ruleset, including backends, modules, services, profiles and known gaps.',
+      inputSchema: objectSchema({ uri: { type: 'string' } }),
     },
     {
       name: 'mahjong.module.list',
@@ -154,6 +159,12 @@ export const MAHJONG_LANGUAGE_MCP_CATALOG: MahjongLanguageMcpCatalog = {
       mimeType: 'text/markdown',
     },
     {
+      uri: 'mahjongplus://catalog/current',
+      name: 'Current semantic catalog',
+      description: 'Injected ruleset-specific inventory of physical backends, modules, generic services, executable profiles and known semantic gaps.',
+      mimeType: 'application/json',
+    },
+    {
       uri: 'mahjongplus://schema/world',
       name: 'World schema',
       description: 'Current WorldSource, action, procedure, response-window, event, zone, relation, and core-program schemas.',
@@ -183,23 +194,24 @@ Use the closed semantic kernel: typed values, entities, relations, ordered zones
 Physical reality is the minimum semantic floor. Every tile is an independent entity. Revealing a tile does not imply moving it, changing ownership, or opening a hand unless separate facts say so. Actions may be attempted even when illegal; the authoritative server adjudicates them. Stale attempts never receive penalties. Duplicate attempt ids are idempotent.
 
 Authoring workflow:
-1. Read mahjongplus://language/spec and mahjongplus://schema/rule-module.
-2. Inspect the base world schema and the modules already installed.
-3. Analyze existing modules and the target world before authoring a change.
-4. Represent the requested change as one or more RuleModuleDefinition objects with explicit parameter schemas, required bindings, and generic binding selectors where resolution is structurally unique.
-5. Use module additions and patches instead of editing host code.
-6. Validate and analyze the module.
-7. Resolve bindings against the current world and prior artifacts. Explicit supplied bindings override selectors.
-8. Stop on no-match, ambiguity, or unresolved selector dependencies. Never choose one candidate merely because its name looks plausible.
-9. Diagnose the proposed composition before instantiation.
-10. Instantiate or auto-compose the ordered modules.
-11. Compile the resulting world.
-12. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, and physical-identity cases.
-13. Search for bounded counterexamples to the intended invariant.
-14. Explain dependencies, reads, writes, and lifecycle effects before presenting the change.
+1. Read mahjongplus://language/spec, mahjongplus://schema/rule-module, and mahjongplus://catalog/current.
+2. Distinguish implemented modules, generic services, physical backends, fixture-only integrations, partial features, and missing semantics. Never claim a gap is implemented because a pressure-test module exists.
+3. Inspect the base world schema and the modules already installed.
+4. Analyze existing modules and the target world before authoring a change.
+5. Represent the requested change as one or more RuleModuleDefinition objects with explicit parameter schemas, required bindings, and generic binding selectors where resolution is structurally unique.
+6. Use module additions and patches instead of editing host code.
+7. Validate and analyze the module.
+8. Resolve bindings against the current world and prior artifacts. Explicit supplied bindings override selectors.
+9. Stop on no-match, ambiguity, or unresolved selector dependencies. Never choose one candidate merely because its name looks plausible.
+10. Diagnose the proposed composition before instantiation.
+11. Instantiate or auto-compose the ordered modules.
+12. Compile the resulting world.
+13. Simulate positive, negative, stale, duplicate-attempt, rollback, visibility, and physical-identity cases.
+14. Search for bounded counterexamples to the intended invariant.
+15. Explain dependencies, reads, writes, lifecycle effects, and any remaining catalog gaps before presenting the change.
 
 Never hide semantics in a label such as riichi, yaku, win, settlement, meld, or dora. Decompose them into independent facts: resource transfers, declarations, score contributions, discard policies, missed-opportunity policies, visibility records, outcome batches, interpretation proposals, settlement batches, and transactions.
 
 A new core primitive is admissible only when the existing kernel cannot express the behavior, no standard-library macro can expand it, the primitive is domain-agnostic, deterministic, bounded, compositional, statically analyzable, and useful in at least three unrelated domains. Otherwise keep it in module data or the standard library.
 
-When modifying a world, call tools rather than describing hypothetical code. Do not claim success until module validation, semantic analysis, binding resolution, composition diagnosis, world compilation, simulation, and the relevant counterexample search all pass.`;
+When modifying a world, call tools rather than describing hypothetical code. Do not claim success until catalog inspection, module validation, semantic analysis, binding resolution, composition diagnosis, world compilation, simulation, and the relevant counterexample search all pass.`;
