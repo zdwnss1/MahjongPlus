@@ -190,6 +190,14 @@ function combinations<T>(values: readonly T[], size: number): T[][] {
   return output;
 }
 
+function compareSelectionKeys(left: number[], right: number[]): number {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return left.length - right.length;
+}
+
 /** Compile-backend optimization. The semantic artifact remains expansion.program. */
 export function solvePartitionExpansion(expansion: PartitionMacroExpansion): FiniteDomainResult {
   const input = expansion.input;
@@ -201,12 +209,14 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
   const maxSolutions = input.maxSolutions ?? 1;
   const maxSteps = input.maxSteps ?? 250_000;
   const solutions: FiniteDomainSolution[] = [];
+  const itemOrder = new Map(input.items.map((item, index) => [item.id, index]));
   let exploredSteps = 0;
 
   const search = (
     index: number,
     remaining: PartitionItemDefinition[],
     assignment: Record<string, string>,
+    previousSelections: Record<string, number[]>,
   ) => {
     if (solutions.length >= maxSolutions) return;
     exploredSteps += 1;
@@ -221,11 +231,16 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
       return;
     }
     const instance = instances[index];
+    const previousSelection = previousSelections[instance.slot.id];
     for (const alternative of instance.slot.alternatives) {
       if (alternative.size > remaining.length) continue;
       for (const selected of combinations(remaining, alternative.size)) {
         exploredSteps += 1;
         if (exploredSteps > maxSteps) throw new Error('Partition backend step budget exceeded.');
+        const selectionKey = selected
+          .map((item) => itemOrder.get(item.id) as number)
+          .sort((left, right) => left - right);
+        if (previousSelection && compareSelectionKeys(selectionKey, previousSelection) <= 0) continue;
         const members = selected.map((item) => ({
           id: item.id,
           attributes: structuredClone(item.attributes),
@@ -233,15 +248,20 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
         }));
         if (!evaluateFormula(alternative.predicate, { variables: { [memberVariable]: members } })) continue;
         const selectedIds = new Set(selected.map((item) => item.id));
-        search(index + 1, remaining.filter((item) => !selectedIds.has(item.id)), {
-          ...assignment,
-          ...Object.fromEntries(selected.map((item) => [item.id, instance.id])),
-        });
+        search(
+          index + 1,
+          remaining.filter((item) => !selectedIds.has(item.id)),
+          {
+            ...assignment,
+            ...Object.fromEntries(selected.map((item) => [item.id, instance.id])),
+          },
+          { ...previousSelections, [instance.slot.id]: selectionKey },
+        );
         if (solutions.length >= maxSolutions) return;
       }
     }
   };
 
-  search(0, structuredClone(input.items), {});
+  search(0, structuredClone(input.items), {}, {});
   return { satisfiable: solutions.length > 0, solutions, exploredSteps };
 }
