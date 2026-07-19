@@ -1,4 +1,4 @@
-import { evaluateFormula } from './evaluator.js';
+import { evaluateFormulaReadonly } from './evaluator.js';
 import type {
   CoreExpression,
   CoreFormula,
@@ -231,10 +231,10 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
         step();
         const members = selected.map((item) => ({
           id: item.id,
-          attributes: structuredClone(item.attributes),
+          attributes: item.attributes,
           assigned: slot.id,
         }));
-        if (!evaluateFormula(alternative.predicate, { variables: { [memberVariable]: members } })) continue;
+        if (!evaluateFormulaReadonly(alternative.predicate, { variables: { [memberVariable]: members } })) continue;
         const key = selected
           .map((item) => itemOrder.get(item.id) as number)
           .sort((left, right) => left - right);
