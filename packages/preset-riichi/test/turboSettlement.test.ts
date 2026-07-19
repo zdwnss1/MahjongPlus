@@ -2,8 +2,13 @@ import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 import type { CoreExpression, CoreFormula } from '@mahjongplus/world-calculus';
 import { compileWorld, createProgressBatchRewrite } from '@mahjongplus/world-language';
+import type { EntityRecord } from '@mahjongplus/world-model';
 import { WorldRuntime } from '@mahjongplus/world-runtime';
-import { composeOutcomeSettlementModule } from '../src/outcomeSettlementModule.js';
+import {
+  appendWorldModuleEntities,
+  composeOutcomeSettlementModule,
+  createWorldEntityIndex,
+} from '../src/outcomeSettlementModule.js';
 import { compileOutcomeSettlementPrograms } from '../src/outcomeSettlementPrograms.js';
 import { createTurboRiichiFixture } from '../src/turboRiichi.js';
 import { createTurboRiichiModel } from '../src/turboRiichiModel.js';
@@ -16,6 +21,13 @@ import {
 const NEXT: Record<TurboRiichiSeat, TurboRiichiSeat> = {
   east: 'south', south: 'west', west: 'north', north: 'east',
 };
+
+interface SettlementFixtureOptions extends TurboRiichiOptions {
+  singlePayerAmount?: number;
+  sharedPayerAmount?: number;
+  minimumBalance?: number;
+  systemActorId?: string;
+}
 
 const literal = (value: unknown): CoreExpression => ({ kind: 'literal', value });
 const variable = (name: string): CoreExpression => ({ kind: 'variable', name });
@@ -30,18 +42,39 @@ const map = (source: CoreExpression, as: string, select: CoreExpression): CoreEx
 const record = (fields: Record<string, CoreExpression>): CoreExpression => ({ kind: 'record', fields });
 const list = (...items: CoreExpression[]): CoreExpression => ({ kind: 'list', items });
 
-function settledSource(options: TurboRiichiOptions = {}) {
-  const base = createTurboRiichiFixture(options);
-  const model = createTurboRiichiModel(options);
+function factTrack(id: string, component: string): EntityRecord {
+  return { id, kind: 'fact-track', components: { [component]: { records: [] } } };
+}
+
+function settledSource(options: SettlementFixtureOptions = {}) {
+  const {
+    singlePayerAmount = 2000,
+    sharedPayerAmount = 1000,
+    minimumBalance = 0,
+    systemActorId = 'system:settlement',
+    ...ruleOptions
+  } = options;
+  const base = createTurboRiichiFixture(ruleOptions);
+  const model = createTurboRiichiModel(ruleOptions);
+  const storageEntities: EntityRecord[] = [
+    { id: systemActorId, kind: 'system-actor', components: { systemRole: { role: 'outcome-settlement' } } },
+    factTrack('track:outcome-batches', 'outcomeBatches'),
+    factTrack('track:interpretation-proposals', 'interpretationProposals'),
+    factTrack('track:interpretation-batches', 'interpretationBatches'),
+    factTrack('track:settlement-batches', 'settlementBatches'),
+    factTrack('track:settlement-transactions', 'settlementTransactions'),
+  ];
+  const sourceWithStorage = appendWorldModuleEntities(base.source, storageEntities);
+  const entityIndex = createWorldEntityIndex(sourceWithStorage);
   const worldEntities = path(variable('world'), 'entities');
   const outcomeRecords = path(
     worldEntities,
-    model.entityIndex('track:outcome-batches'),
+    entityIndex('track:outcome-batches'),
     'components',
     'outcomeBatches',
     'records',
   );
-  const selectedRonItems = map(
+  const selectedItems = map(
     path(variable('window'), 'selected'),
     'selected',
     record({
@@ -51,12 +84,12 @@ function settledSource(options: TurboRiichiOptions = {}) {
       mode: literal('ron'),
     }),
   );
-  const ronOutcome = createProgressBatchRewrite({
-    id: 'fixture.outcome.ron',
+  const selectedOutcome = createProgressBatchRewrite({
+    id: 'fixture.outcome.selected',
     batchesPath: [
       'world',
       'entities',
-      model.entityIndex('track:outcome-batches'),
+      entityIndex('track:outcome-batches'),
       'components',
       'outcomeBatches',
       'records',
@@ -66,7 +99,7 @@ function settledSource(options: TurboRiichiOptions = {}) {
     batchKind: literal('win-outcomes'),
     sourceField: 'sourceExposureId',
     sourceId: path(variable('window'), 'sourceEventId'),
-    items: selectedRonItems,
+    items: selectedItems,
     currentItemKey: path(variable('submission'), 'actionEntityId'),
     metadata: record({
       sourceActorId: path(variable('window'), 'sourceActorId'),
@@ -81,12 +114,12 @@ function settledSource(options: TurboRiichiOptions = {}) {
     'draw',
     compare('eq', path(variable('draw'), 'subjectId'), variable('actorId')),
   ), '0');
-  const selfOutcome = createProgressBatchRewrite({
-    id: 'fixture.outcome.self',
+  const directOutcome = createProgressBatchRewrite({
+    id: 'fixture.outcome.direct',
     batchesPath: [
       'world',
       'entities',
-      model.entityIndex('track:outcome-batches'),
+      entityIndex('track:outcome-batches'),
       'components',
       'outcomeBatches',
       'records',
@@ -115,31 +148,31 @@ function settledSource(options: TurboRiichiOptions = {}) {
   const itemSubject = path(variable('item'), 'actorId');
   const batchId = variable('batchId');
   const itemKey = variable('itemKey');
-  const ronTransfers = list(record({
+  const singlePayerTransfers = list(record({
     asset: literal('points'),
     fromAccountId: path(variable('outcome'), 'metadata', 'sourceActorId'),
     toAccountId: itemSubject,
-    amount: literal(model.policy.ronPayment),
+    amount: literal(singlePayerAmount),
     sourceBatchId: batchId,
     sourceItemKey: itemKey,
     reason: literal('fixture-single-payer'),
   }));
-  const tsumoPayers = filter(
+  const sharedPayers = filter(
     literal(TURBO_PLAYERS),
     'payerId',
     compare('neq', variable('payerId'), itemSubject),
   );
-  const tsumoTransfers = map(tsumoPayers, 'payerId', record({
+  const sharedPayerTransfers = map(sharedPayers, 'payerId', record({
     asset: literal('points'),
     fromAccountId: variable('payerId'),
     toAccountId: itemSubject,
-    amount: literal(model.policy.tsumoPaymentEach),
+    amount: literal(sharedPayerAmount),
     sourceBatchId: batchId,
     sourceItemKey: itemKey,
     reason: literal('fixture-shared-payer'),
   }));
   const programs = compileOutcomeSettlementPrograms({
-    entityIndex: model.entityIndex,
+    entityIndex,
     tracks: {
       outcomes: { entityId: 'track:outcome-batches', component: 'outcomeBatches' },
       proposals: { entityId: 'track:interpretation-proposals', component: 'interpretationProposals' },
@@ -150,7 +183,7 @@ function settledSource(options: TurboRiichiOptions = {}) {
     ledger: { entityId: 'ledger:points', component: 'ledger' },
   }, {
     id: 'fixture.fixed-transfer-interpreter',
-    systemActorId: model.policy.settlementActorId,
+    systemActorId,
     outcomeKind: 'win-outcomes',
     outcomeSourceField: 'sourceExposureId',
     allowedModes: ['ron', 'tsumo'],
@@ -165,13 +198,13 @@ function settledSource(options: TurboRiichiOptions = {}) {
       targetId: path(variable('outcome'), 'metadata', 'sourceEntityId'),
     },
     transferShapes: [
-      { when: compare('eq', itemMode, literal('ron')), transfers: ronTransfers },
-      { when: compare('eq', itemMode, literal('tsumo')), transfers: tsumoTransfers },
+      { when: compare('eq', itemMode, literal('ron')), transfers: singlePayerTransfers },
+      { when: compare('eq', itemMode, literal('tsumo')), transfers: sharedPayerTransfers },
     ],
     asset: 'points',
-    minimumBalance: model.policy.minimumSettlementBalance,
+    minimumBalance,
   });
-  const source = composeOutcomeSettlementModule(base.source, {
+  const source = composeOutcomeSettlementModule(sourceWithStorage, {
     id: 'fixture.outcome-settlement',
     programs,
     producerPatches: [
@@ -183,31 +216,31 @@ function settledSource(options: TurboRiichiOptions = {}) {
           placement: 'after-program',
           anchorProgramId: 'turbo-riichi.collect-response-batch',
         },
-        effects: [{ kind: 'core.rewrite', programId: ronOutcome.id }],
+        effects: [{ kind: 'core.rewrite', programId: selectedOutcome.id }],
       },
       {
         target: { kind: 'action', actionId: 'turbo-riichi.self-win', placement: 'prepend' },
-        effects: [{ kind: 'core.rewrite', programId: selfOutcome.id }],
+        effects: [{ kind: 'core.rewrite', programId: directOutcome.id }],
       },
     ],
     gateActionIds: ['draw', 'discard', 'end-exhaustive-draw'],
-    additionalRewrites: [ronOutcome, selfOutcome],
+    additionalRewrites: [selectedOutcome, directOutcome],
     metadata: {
-      interpreterProfile: {
-        singlePayerAmount: model.policy.ronPayment,
-        sharedPayerAmount: model.policy.tsumoPaymentEach,
-        minimumBalance: model.policy.minimumSettlementBalance,
-      },
+      interpreterProfile: { singlePayerAmount, sharedPayerAmount, minimumBalance },
     },
   });
-  return { fixture: { ...base, source }, model };
+  return {
+    fixture: { ...base, source },
+    model,
+    profile: { singlePayerAmount, sharedPayerAmount, minimumBalance, systemActorId },
+  };
 }
 
-function setup(options: TurboRiichiOptions = {}) {
-  const { fixture, model } = settledSource(options);
+function setup(options: SettlementFixtureOptions = {}) {
+  const { fixture, model, profile } = settledSource(options);
   const value = new WorldRuntime(compileWorld(fixture.source));
   value.start();
-  return { fixture, model, value };
+  return { fixture, model, profile, value };
 }
 
 function act(
@@ -326,8 +359,8 @@ function collectKinds(value: unknown, output: string[] = []): string[] {
 
 describe('modular outcome interpretation and settlement', () => {
   it('interprets multiple items, composes ordered transfers, and commits atomically', () => {
-    const { fixture, model, value } = setup({ ronPayment: 2000 });
-    const engine = model.policy.settlementActorId;
+    const { fixture, profile, value } = setup({ singlePayerAmount: 2000 });
+    const engine = profile.systemActorId;
     expect(declare(value, fixture.ids.tripletIds).outcome).toBe('executed');
     expect(discard(value, 'east-discard', 'east', fixture.ids.initialDrawId).outcome).toBe('executed');
     const window = value.openResponseWindows()[0];
@@ -385,8 +418,8 @@ describe('modular outcome interpretation and settlement', () => {
   });
 
   it('rejects an aggregate overdraft without partially changing balances or lifecycle state', () => {
-    const { fixture, model, value } = setup({ startingPoints: 5000, ronPayment: 3000 });
-    const engine = model.policy.settlementActorId;
+    const { fixture, profile, value } = setup({ startingPoints: 5000, singlePayerAmount: 3000 });
+    const engine = profile.systemActorId;
     declare(value, fixture.ids.tripletIds);
     discard(value, 'east-discard', 'east', fixture.ids.initialDrawId);
     const window = value.openResponseWindows()[0];
@@ -411,8 +444,8 @@ describe('modular outcome interpretation and settlement', () => {
   });
 
   it('routes a one-item outcome through the same settlement pipeline', () => {
-    const { fixture, model, value } = setup({ tsumoPaymentEach: 1000 });
-    const engine = model.policy.settlementActorId;
+    const { fixture, profile, value } = setup({ sharedPayerAmount: 1000 });
+    const engine = profile.systemActorId;
     declare(value, fixture.ids.tripletIds);
     discard(value, 'east-discard', 'east', fixture.ids.initialDrawId);
     const firstWindow = value.openResponseWindows()[0];
