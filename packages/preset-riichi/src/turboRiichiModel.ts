@@ -30,28 +30,19 @@ function normalizeOptions(options: TurboRiichiOptions): TurboRiichiPolicy {
     maxWinsPerPlayer: options.maxWinsPerPlayer ?? null,
     startingPoints: options.startingPoints ?? 25000,
     wallTileCount: options.wallTileCount ?? 8,
-    ronPayment: options.ronPayment ?? 2000,
-    tsumoPaymentEach: options.tsumoPaymentEach ?? 1000,
-    minimumSettlementBalance: options.minimumSettlementBalance ?? 0,
-    settlementActorId: options.settlementActorId ?? 'system:settlement',
   };
   if (!TURBO_PLAYERS.includes(policy.declarerId)) throw new Error('Turbo-riichi declarer must be a seat id.');
   if (!['m7', 'p7', 's7'].includes(policy.proofFace)) throw new Error('Turbo-riichi proof face must be a suited seven.');
   for (const [name, value] of Object.entries(policy)) {
-    if (typeof value === 'number' && !Number.isInteger(value)) throw new Error(`${name} must be an integer.`);
-    if (typeof value === 'number' && name !== 'minimumSettlementBalance' && value < 0) {
-      throw new Error(`${name} must be non-negative.`);
+    if (typeof value === 'number' && (!Number.isInteger(value) || value < 0)) {
+      throw new Error(`${name} must be a non-negative integer.`);
     }
   }
   if (policy.stake < 1) throw new Error('Turbo-riichi stake must be positive.');
-  if (policy.ronPayment < 1 || policy.tsumoPaymentEach < 1) {
-    throw new Error('Fixture settlement payments must be positive.');
-  }
   if (policy.maxWinsPerPlayer != null && policy.maxWinsPerPlayer < 1) {
     throw new Error('maxWinsPerPlayer must be positive or null.');
   }
   if (policy.wallTileCount < 1) throw new Error('wallTileCount must be positive.');
-  if (!policy.settlementActorId) throw new Error('settlementActorId is required.');
   return policy;
 }
 
@@ -116,11 +107,6 @@ export function createTurboRiichiModel(options: TurboRiichiOptions = {}): TurboR
       handState: { closed: true },
     },
   }));
-  const settlementActor: EntityRecord = {
-    id: policy.settlementActorId,
-    kind: 'player',
-    components: { systemRole: { role: 'settlement-pipeline' } },
-  };
   const ledger: EntityRecord = {
     id: 'ledger:points',
     kind: 'resource-ledger',
@@ -143,18 +129,13 @@ export function createTurboRiichiModel(options: TurboRiichiOptions = {}): TurboR
     factTrack('track:visibility', 'visibility'),
     factTrack('track:wins', 'wins'),
     factTrack('track:response-batches', 'responseBatches'),
-    factTrack('track:outcome-batches', 'outcomeBatches'),
-    factTrack('track:interpretation-proposals', 'interpretationProposals'),
-    factTrack('track:interpretation-batches', 'interpretationBatches'),
-    factTrack('track:settlement-batches', 'settlementBatches'),
-    factTrack('track:settlement-transactions', 'settlementTransactions'),
   ];
   const rule: EntityRecord = {
     id: policy.id,
     kind: 'rule-instance',
     components: { rulePolicy: structuredClone(policy) },
   };
-  const entities = [...players, settlementActor, ledger, ...tracks, rule, ...tiles];
+  const entities = [...players, ledger, ...tracks, rule, ...tiles];
   const indices = new Map(entities.map((entity, index) => [entity.id, index]));
   const entityIndex = (id: string): string => {
     const value = indices.get(id);
