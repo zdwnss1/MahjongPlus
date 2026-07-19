@@ -71,6 +71,7 @@ export interface OutcomeInterpreterDefinition {
   id: string;
   systemActorId: string;
   outcomeKind: string;
+  outcomeSourceField: string;
   allowedModes: string[];
   itemKey: CoreExpression;
   subjectId: CoreExpression;
@@ -113,10 +114,28 @@ function recordsPath(
   return ['world', 'entities', entityIndex(binding.entityId), 'components', binding.component, 'records'];
 }
 
-function transferShapeExpression(definition: OutcomeInterpreterDefinition): CoreExpression {
+function bindTemplate<T>(value: T, bindings: Record<string, CoreExpression>): T {
+  if (Array.isArray(value)) return value.map((entry) => bindTemplate(entry, bindings)) as T;
+  if (!value || typeof value !== 'object') return value;
+  const object = value as Record<string, unknown>;
+  if (object.kind === 'variable' && typeof object.name === 'string' && bindings[object.name]) {
+    return structuredClone(bindings[object.name]) as T;
+  }
+  return Object.fromEntries(Object.entries(object)
+    .map(([key, entry]) => [key, bindTemplate(entry, bindings)])) as T;
+}
+
+function transferShapeExpression(
+  definition: OutcomeInterpreterDefinition,
+  bindings: Record<string, CoreExpression>,
+): CoreExpression {
   if (definition.transferShapes.length === 0) throw new Error('At least one transfer shape is required.');
   return [...definition.transferShapes].reverse().reduce<CoreExpression>(
-    (fallback, shape) => choose(shape.when, shape.transfers, fallback),
+    (fallback, shape) => choose(
+      bindTemplate(shape.when, bindings),
+      bindTemplate(shape.transfers, bindings),
+      fallback,
+    ),
     literal([]),
   );
 }
@@ -128,6 +147,7 @@ export function compileOutcomeSettlementPrograms(
   if (!definition.id) throw new Error('Outcome interpreter id is required.');
   if (!definition.systemActorId) throw new Error('Outcome interpreter actor id is required.');
   if (!definition.outcomeKind) throw new Error('Outcome kind is required.');
+  if (!definition.outcomeSourceField) throw new Error('Outcome source field is required.');
   if (definition.allowedModes.length === 0) throw new Error('At least one outcome mode is required.');
   if (!definition.asset) throw new Error('Settlement asset is required.');
   if (!Number.isFinite(definition.minimumBalance)) throw new Error('Minimum balance must be finite.');
@@ -167,6 +187,13 @@ export function compileOutcomeSettlementPrograms(
     compare('eq', definition.itemKey, itemKey),
   );
   const item = path(matchingItems, '0');
+  const templateBindings = { outcome, item, batchId, itemKey };
+  const selectedItemKey = bindTemplate(definition.itemKey, templateBindings);
+  const selectedSubjectId = bindTemplate(definition.subjectId, templateBindings);
+  const selectedMode = bindTemplate(definition.mode, templateBindings);
+  const evidenceSourceId = bindTemplate(definition.evidence.sourceId, templateBindings);
+  const evidenceTargetId = bindTemplate(definition.evidence.targetId, templateBindings);
+
   const proposalsForBatch = filter(
     interpretationProposals,
     'proposal',
@@ -183,9 +210,9 @@ export function compileOutcomeSettlementPrograms(
     all(
       compare('eq', path(variable('relation'), 'type'), literal(definition.evidence.relationType)),
       compare('eq', path(variable('relation'), 'source', 'kind'), literal(definition.evidence.sourceKind)),
-      compare('eq', path(variable('relation'), 'source', 'id'), definition.evidence.sourceId),
+      compare('eq', path(variable('relation'), 'source', 'id'), evidenceSourceId),
       compare('eq', path(variable('relation'), 'target', 'kind'), literal(definition.evidence.targetKind)),
-      compare('eq', path(variable('relation'), 'target', 'id'), definition.evidence.targetId),
+      compare('eq', path(variable('relation'), 'target', 'id'), evidenceTargetId),
     ),
   );
 
@@ -196,12 +223,13 @@ export function compileOutcomeSettlementPrograms(
     compare('eq', path(outcome, 'state'), literal('ready')),
     compare('eq', path(outcome, 'kind'), literal(definition.outcomeKind)),
     compare('eq', aggregate('count', matchingItems), literal(1)),
+    compare('eq', selectedItemKey, itemKey),
     compare('eq', aggregate('count', proposalForItem), literal(0)),
     compare('eq', aggregate('count', evidenceRelations), literal(1)),
-    { kind: 'contains', collection: literal(definition.allowedModes), value: definition.mode },
+    { kind: 'contains', collection: literal(definition.allowedModes), value: selectedMode },
   ));
 
-  const interpretedTransfers = transferShapeExpression(definition);
+  const interpretedTransfers = transferShapeExpression(definition, templateBindings);
   const appendInterpretation: RewriteProgram = {
     id: `${definition.id}.append-interpretation`,
     operations: [{
@@ -210,11 +238,11 @@ export function compileOutcomeSettlementPrograms(
       value: concat(interpretationProposals, list(record({
         sourceBatchId: batchId,
         sourceItemKey: itemKey,
-        subjectId: definition.subjectId,
-        mode: definition.mode,
+        subjectId: selectedSubjectId,
+        mode: selectedMode,
         state: literal('accepted'),
         evidenceRelationId: path(evidenceRelations, '0', 'id'),
-        sourceEntityId: definition.evidence.targetId,
+        sourceEntityId: evidenceTargetId,
         transfers: interpretedTransfers,
         interpreterId: literal(definition.id),
         interpretedByActionId: variable('actionEntityId'),
@@ -245,6 +273,10 @@ export function compileOutcomeSettlementPrograms(
     'batch',
     compare('eq', path(variable('batch'), 'sourceBatchId'), batchId),
   );
+  const outcomeItemKey = bindTemplate(definition.itemKey, {
+    ...templateBindings,
+    item: variable('outcomeItem'),
+  });
   const everyItemCovered: CoreFormula = quantify(
     'forall',
     outcomeItems,
@@ -254,7 +286,7 @@ export function compileOutcomeSettlementPrograms(
       aggregate('count', filter(
         proposalsForBatch,
         'proposal',
-        compare('eq', path(variable('proposal'), 'sourceItemKey'), path(variable('outcomeItem'), 'actionEntityId')),
+        compare('eq', path(variable('proposal'), 'sourceItemKey'), outcomeItemKey),
       )),
       literal(1),
     ),
@@ -271,7 +303,7 @@ export function compileOutcomeSettlementPrograms(
     firstMatching(
       proposalsForBatch,
       'proposal',
-      compare('eq', path(variable('proposal'), 'sourceItemKey'), path(variable('outcomeItem'), 'actionEntityId')),
+      compare('eq', path(variable('proposal'), 'sourceItemKey'), outcomeItemKey),
     ),
   );
   const orderedTransfers = flatten(map(orderedProposals, 'proposal', path(variable('proposal'), 'transfers')));
@@ -373,7 +405,7 @@ export function compileOutcomeSettlementPrograms(
       record({
         id: path(variable('batch'), 'id'),
         kind: path(variable('batch'), 'kind'),
-        sourceExposureId: path(variable('batch'), 'sourceExposureId'),
+        [definition.outcomeSourceField]: path(variable('batch'), definition.outcomeSourceField),
         items: path(variable('batch'), 'items'),
         processedKeys: path(variable('batch'), 'processedKeys'),
         state: literal('consumed'),
