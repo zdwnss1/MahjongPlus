@@ -4,6 +4,7 @@ import {
   type RuleModuleBindingSelectors,
   type RuleModuleDefinition,
 } from '@mahjongplus/world-language';
+import { RIICHI_DIRECT_INTERPRETATION_MODULE } from './directHandInterpretation.js';
 import { RIICHI_RESPONSE_INTERPRETATION_MODULE } from './handStructureProfiles.js';
 import { LOCAL_YAKU_MODULES } from './localYaku.js';
 import { RIICHI_COMMON_FLOW_MODULE } from './riichiCommonFlowModule.js';
@@ -12,6 +13,13 @@ import {
   CONTINUING_WIN_FLOW_MODULE,
   TURBO_DECLARATION_MODULE,
 } from './turboRiichiModules.js';
+
+const STANDARD_SUBJECT_ZONES = [
+  { subjectId: 'east', zoneId: 'hand:east' },
+  { subjectId: 'south', zoneId: 'hand:south' },
+  { subjectId: 'west', zoneId: 'hand:west' },
+  { subjectId: 'north', zoneId: 'hand:north' },
+];
 
 export const RIICHI_MODULE_BINDING_SELECTORS: Record<string, RuleModuleBindingSelectors> = {
   [RIICHI_COMMON_FLOW_MODULE.id]: {
@@ -78,15 +86,14 @@ export const RIICHI_MODULE_BINDING_SELECTORS: Record<string, RuleModuleBindingSe
     },
   },
   [RIICHI_RESPONSE_INTERPRETATION_MODULE.id]: {
-    subjectZones: {
-      kind: 'literal',
-      value: [
-        { subjectId: 'east', zoneId: 'hand:east' },
-        { subjectId: 'south', zoneId: 'hand:south' },
-        { subjectId: 'west', zoneId: 'hand:west' },
-        { subjectId: 'north', zoneId: 'hand:north' },
-      ],
-    },
+    subjectZones: { kind: 'literal', value: STANDARD_SUBJECT_ZONES },
+    evidenceRelationType: { kind: 'relation-type', value: 'can-win-on' },
+  },
+  [RIICHI_DIRECT_INTERPRETATION_MODULE.id]: {
+    playerIds: { kind: 'entity-id', entityKind: 'player', cardinality: 'many' },
+    subjectZones: { kind: 'literal', value: STANDARD_SUBJECT_ZONES },
+    sourceZoneIds: { kind: 'literal', value: ['wall.live', 'wall.dead'] },
+    drawActionId: { kind: 'action-id', id: 'draw' },
     evidenceRelationType: { kind: 'relation-type', value: 'can-win-on' },
   },
 };
@@ -103,6 +110,7 @@ export const RIICHI_RULE_MODULES: RuleModuleDefinition[] = [
   TURBO_DECLARATION_MODULE,
   CONTINUING_WIN_FLOW_MODULE,
   RIICHI_RESPONSE_INTERPRETATION_MODULE,
+  RIICHI_DIRECT_INTERPRETATION_MODULE,
 ].map(catalogModule);
 
 export const RIICHI_RULE_MODULE_ANALYSES = RIICHI_RULE_MODULES.map((definition) =>

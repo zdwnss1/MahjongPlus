@@ -1,4 +1,4 @@
-import { evaluateFormula } from './evaluator.js';
+import { evaluateFormulaReadonly } from './evaluator.js';
 import type {
   CoreExpression,
   CoreFormula,
@@ -190,6 +190,19 @@ function combinations<T>(values: readonly T[], size: number): T[][] {
   return output;
 }
 
+function compareSelectionKeys(left: number[], right: number[]): number {
+  const length = Math.min(left.length, right.length);
+  for (let index = 0; index < length; index += 1) {
+    if (left[index] !== right[index]) return left[index] - right[index];
+  }
+  return left.length - right.length;
+}
+
+interface PartitionCandidate {
+  itemIds: string[];
+  key: number[];
+}
+
 /** Compile-backend optimization. The semantic artifact remains expansion.program. */
 export function solvePartitionExpansion(expansion: PartitionMacroExpansion): FiniteDomainResult {
   const input = expansion.input;
@@ -201,18 +214,58 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
   const maxSolutions = input.maxSolutions ?? 1;
   const maxSteps = input.maxSteps ?? 250_000;
   const solutions: FiniteDomainSolution[] = [];
+  const itemOrder = new Map(input.items.map((item, index) => [item.id, index]));
+  const itemsById = new Map(input.items.map((item) => [item.id, item]));
   let exploredSteps = 0;
+  const step = () => {
+    exploredSteps += 1;
+    if (exploredSteps > maxSteps) throw new Error('Partition backend step budget exceeded.');
+  };
+
+  const candidatesBySlot = new Map<string, PartitionCandidate[]>();
+  for (const slot of input.slots) {
+    const candidates: PartitionCandidate[] = [];
+    const seen = new Set<string>();
+    for (const alternative of slot.alternatives) {
+      for (const selected of combinations(input.items, alternative.size)) {
+        step();
+        const members = selected.map((item) => ({
+          id: item.id,
+          attributes: item.attributes,
+          assigned: slot.id,
+        }));
+        if (!evaluateFormulaReadonly(alternative.predicate, { variables: { [memberVariable]: members } })) continue;
+        const key = selected
+          .map((item) => itemOrder.get(item.id) as number)
+          .sort((left, right) => left - right);
+        const serialized = JSON.stringify(key);
+        if (seen.has(serialized)) continue;
+        seen.add(serialized);
+        candidates.push({ itemIds: selected.map((item) => item.id), key });
+      }
+    }
+    candidates.sort((left, right) => compareSelectionKeys(left.key, right.key));
+    candidatesBySlot.set(slot.id, candidates);
+  }
+
+  const searchInstances = [...instances].sort((left, right) => {
+    const candidateDifference = (candidatesBySlot.get(left.slot.id)?.length ?? 0)
+      - (candidatesBySlot.get(right.slot.id)?.length ?? 0);
+    if (candidateDifference !== 0) return candidateDifference;
+    if (left.slot.id !== right.slot.id) return left.slot.id.localeCompare(right.slot.id);
+    return left.id.localeCompare(right.id, undefined, { numeric: true });
+  });
 
   const search = (
     index: number,
-    remaining: PartitionItemDefinition[],
+    remainingIds: Set<string>,
     assignment: Record<string, string>,
+    previousSelections: Record<string, number[]>,
   ) => {
     if (solutions.length >= maxSolutions) return;
-    exploredSteps += 1;
-    if (exploredSteps > maxSteps) throw new Error('Partition backend step budget exceeded.');
-    if (index === instances.length) {
-      if (remaining.length === 0) {
+    step();
+    if (index === searchInstances.length) {
+      if (remainingIds.size === 0) {
         solutions.push({
           assignment: structuredClone(assignment),
           outputs: { assignments: structuredClone(assignment) },
@@ -220,28 +273,29 @@ export function solvePartitionExpansion(expansion: PartitionMacroExpansion): Fin
       }
       return;
     }
-    const instance = instances[index];
-    for (const alternative of instance.slot.alternatives) {
-      if (alternative.size > remaining.length) continue;
-      for (const selected of combinations(remaining, alternative.size)) {
-        exploredSteps += 1;
-        if (exploredSteps > maxSteps) throw new Error('Partition backend step budget exceeded.');
-        const members = selected.map((item) => ({
-          id: item.id,
-          attributes: structuredClone(item.attributes),
-          assigned: instance.id,
-        }));
-        if (!evaluateFormula(alternative.predicate, { variables: { [memberVariable]: members } })) continue;
-        const selectedIds = new Set(selected.map((item) => item.id));
-        search(index + 1, remaining.filter((item) => !selectedIds.has(item.id)), {
-          ...assignment,
-          ...Object.fromEntries(selected.map((item) => [item.id, instance.id])),
-        });
-        if (solutions.length >= maxSolutions) return;
+    const instance = searchInstances[index];
+    const previousSelection = previousSelections[instance.slot.id];
+    for (const candidate of candidatesBySlot.get(instance.slot.id) ?? []) {
+      step();
+      if (previousSelection && compareSelectionKeys(candidate.key, previousSelection) <= 0) continue;
+      if (candidate.itemIds.some((id) => !remainingIds.has(id))) continue;
+      const nextRemaining = new Set(remainingIds);
+      const nextAssignment = { ...assignment };
+      for (const id of candidate.itemIds) {
+        if (!itemsById.has(id)) throw new Error(`Partition candidate references unknown item ${id}.`);
+        nextRemaining.delete(id);
+        nextAssignment[id] = instance.id;
       }
+      search(
+        index + 1,
+        nextRemaining,
+        nextAssignment,
+        { ...previousSelections, [instance.slot.id]: candidate.key },
+      );
+      if (solutions.length >= maxSolutions) return;
     }
   };
 
-  search(0, structuredClone(input.items), {});
+  search(0, new Set(input.items.map((item) => item.id)), {}, {});
   return { satisfiable: solutions.length > 0, solutions, exploredSteps };
 }

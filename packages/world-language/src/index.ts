@@ -8,5 +8,6 @@ export * from './ruleModules.js';
 export * from './semanticAnalysis.js';
 export * from './bindingResolution.js';
 export * from './partitionInterpretation.js';
+export * from './trackedSourceInterpretation.js';
 export * from './mahjongMcp.js';
 export * from './mahjongAuthoring.js';

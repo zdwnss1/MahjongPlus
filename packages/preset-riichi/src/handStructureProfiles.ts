@@ -102,7 +102,7 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
       ],
     }],
     maxProposals: 24,
-    candidateLimit: 256,
+    candidateLimit: 24,
     maxSteps: 250_000,
   },
   {
@@ -117,7 +117,7 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
       predicate: compare('eq', distinctItemFaces, literal(7)),
     }],
     maxProposals: 16,
-    candidateLimit: 64,
+    candidateLimit: 16,
     maxSteps: 100_000,
   },
   {
@@ -136,7 +136,7 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
       predicate: compare('eq', distinctItemFaces, literal(13)),
     }],
     maxProposals: 16,
-    candidateLimit: 64,
+    candidateLimit: 16,
     maxSteps: 100_000,
   },
 ];
