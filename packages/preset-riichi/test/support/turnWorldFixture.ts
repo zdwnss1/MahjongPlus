@@ -41,6 +41,7 @@ export interface TurnWorldFixture {
 }
 
 const literal = (value: unknown): CoreExpression => ({ kind: 'literal', value });
+const valueLiteral = (value: unknown) => ({ kind: 'literal' as const, value });
 const variable = (name: string): CoreExpression => ({ kind: 'variable', name });
 const path = (target: CoreExpression, ...parts: string[]): CoreExpression => ({ kind: 'path', target, path: parts });
 
@@ -164,10 +165,10 @@ export function buildTurnWorldFixture(options: TurnWorldFixtureOptions): TurnWor
             owner: 'actor',
             message: 'It is not this player draw turn.',
           },
-          { id: 'draw.wall', kind: 'zone-not-empty', zone: literal(liveZoneId), message: 'The live wall is empty.' },
+          { id: 'draw.wall', kind: 'zone-not-empty', zone: valueLiteral(liveZoneId), message: 'The live wall is empty.' },
         ],
         effects: [
-          { kind: 'zone.move-head', fromZone: literal(liveZoneId), toZone: { kind: 'template', template: 'hand:${actorId}' } },
+          { kind: 'zone.move-head', fromZone: valueLiteral(liveZoneId), toZone: { kind: 'template', template: 'hand:${actorId}' } },
           {
             kind: 'event.emit',
             eventType: 'tile.drawn',
