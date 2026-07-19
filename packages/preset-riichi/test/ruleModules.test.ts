@@ -2,10 +2,13 @@ import { describe, expect, it } from 'vitest';
 import {
   MAHJONG_LANGUAGE_MCP_CATALOG,
   MAHJONG_LANGUAGE_SYSTEM_PROMPT,
+  MahjongLanguageAuthoringSession,
   composeWorldModules,
   instantiateRuleModule,
   validateRuleModuleDefinition,
   type RuleModuleDefinition,
+  type RuleModuleInstantiation,
+  type WorldImage,
   type WorldSource,
 } from '@mahjongplus/world-language';
 
@@ -160,5 +163,22 @@ describe('declarative rule module language', () => {
     expect(MAHJONG_LANGUAGE_SYSTEM_PROMPT).toContain('never TypeScript');
     expect(MAHJONG_LANGUAGE_SYSTEM_PROMPT).toContain('RuleModuleDefinition');
     expect(MAHJONG_LANGUAGE_SYSTEM_PROMPT).toContain('Do not claim success');
+  });
+
+  it('executes the authoring MCP path for registry, validation, instantiation and compilation', () => {
+    const session = new MahjongLanguageAuthoringSession({ modules: [MODULE] });
+    expect(session.callTool('mahjong.module.list', {})).toEqual([
+      { id: 'fixture.module', version: '1.0.0', title: 'Fixture module' },
+    ]);
+    expect(session.callTool('mahjong.module.validate', { module: MODULE })).toEqual({ errors: [] });
+    const instantiated = session.callTool('mahjong.module.instantiate', {
+      world: BASE_WORLD,
+      module: session.callTool('mahjong.module.read', { id: 'fixture.module' }),
+      bindings: { actorId: 'player:east' },
+    }) as RuleModuleInstantiation;
+    const image = session.callTool('mahjong.world.compile', { world: instantiated.world }) as WorldImage;
+    expect(image.hash).toMatch(/^[a-f0-9]+$/);
+    expect(() => session.callTool('mahjong.world.simulate', { world: image, attempts: [] }))
+      .toThrow(/RuntimeAdapter\.simulate/);
   });
 });
