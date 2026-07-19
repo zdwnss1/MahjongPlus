@@ -212,7 +212,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['The common production flow does not yet consume generic discard-policy or furiten-policy tracks.'],
   },
   {
-    id: 'gap-kan-family',
+    id: 'gap.kan-family',
     title: 'Complete kan family and post-kan procedures',
     layer: 'physical-procedure',
     status: 'partial',
@@ -221,7 +221,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['The await-kan-draw node exists, but no replacement-draw action or remaining kan variants are implemented.'],
   },
   {
-    id: 'gap-dora-consumers',
+    id: 'gap.dora-consumers',
     title: 'Dora, ura-dora and kan-dora consumption',
     layer: 'score-interpretation',
     status: 'partial',
@@ -230,7 +230,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['Reveal records exist, but no production score interpreter consumes indicator channels.'],
   },
   {
-    id: 'gap-draw-and-abortive-endings',
+    id: 'gap.draw-and-abortive-endings',
     title: 'Exhaustive and abortive hand endings',
     layer: 'hand-lifecycle',
     status: 'missing',
@@ -239,7 +239,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['Continuing multi-win correctly diagnoses the absent production end action rather than guessing one.'],
   },
   {
-    id: 'gap-match-lifecycle',
+    id: 'gap.match-lifecycle',
     title: 'Round, hand and match lifecycle',
     layer: 'match-procedure',
     status: 'missing',
@@ -248,7 +248,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['The current preset creates one hand world and does not progress a full match.'],
   },
   {
-    id: 'gap-penalty-policy',
+    id: 'gap.penalty-policy',
     title: 'Penalty and chombo policy composition',
     layer: 'adjudication-policy',
     status: 'missing',
@@ -257,7 +257,7 @@ const gaps: SemanticGapRecord[] = [
     notes: ['No production rule module maps specific adjudication failures to penalties yet.'],
   },
   {
-    id: 'gap-observation-projection',
+    id: 'gap.observation-projection',
     title: 'Production private/public observation projections',
     layer: 'observation',
     status: 'partial',
@@ -340,7 +340,7 @@ export const RIICHI_SEMANTIC_CATALOG: RiichiSemanticCatalog = {
       backends: [],
       modules: ['rule.super-riichi'],
       services: ['service.rule-language-authoring', 'service.world-runtime-validation'],
-      unresolvedGaps: ['gap-hand-interpretation', 'gap-dora-consumers', 'gap-standard-settlement-integration'],
+      unresolvedGaps: ['gap.hand-interpretation', 'gap.dora-consumers', 'gap.standard-settlement-integration'],
     },
     {
       id: 'profile.turbo-riichi-fixture',
