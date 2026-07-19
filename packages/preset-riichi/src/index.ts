@@ -5,3 +5,4 @@ export * from './riichiCommonFlowModule.js';
 export * from './outcomeSettlementPrograms.js';
 export * from './outcomeSettlementModule.js';
 export * from './ruleModuleCatalog.js';
+export * from './semanticCatalog.js';
