@@ -12,6 +12,12 @@ export interface TurboRiichiOptions {
   maxWinsPerPlayer?: number | null;
   startingPoints?: number;
   wallTileCount?: number;
+  /** Fixture interpreter output for one ron proposal; not production scoring. */
+  ronPayment?: number;
+  /** Fixture interpreter output paid by each opponent for one tsumo proposal. */
+  tsumoPaymentEach?: number;
+  minimumSettlementBalance?: number;
+  settlementActorId?: string;
 }
 
 export interface TurboRiichiPolicy {
@@ -23,6 +29,10 @@ export interface TurboRiichiPolicy {
   maxWinsPerPlayer: number | null;
   startingPoints: number;
   wallTileCount: number;
+  ronPayment: number;
+  tsumoPaymentEach: number;
+  minimumSettlementBalance: number;
+  settlementActorId: string;
 }
 
 export interface TurboRiichiFixture {

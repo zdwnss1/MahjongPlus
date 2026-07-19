@@ -24,30 +24,31 @@ const list = (...items: CoreExpression[]): CoreExpression => ({ kind: 'list', it
 const concat = (...sources: CoreExpression[]): CoreExpression => ({ kind: 'concat', sources });
 const distinct = (source: CoreExpression): CoreExpression => ({ kind: 'distinct', source });
 
-export interface ResponseBatchProgressMacroInput {
+export interface ProgressBatchMacroInput {
   id: string;
   batchesPath: string[];
   batches: CoreExpression;
   batchId: CoreExpression;
   batchKind: CoreExpression;
-  sourceWindowId: CoreExpression;
+  sourceField?: string;
+  sourceId: CoreExpression;
   items: CoreExpression;
   currentItemKey: CoreExpression;
   metadata?: CoreExpression;
 }
 
 /**
- * Compile-time standard-library expansion for a response-resolution batch.
+ * Generic compile-time expansion for a progress batch.
  *
- * The rewrite is safe to execute once per selected item. The first execution
+ * The rewrite is safe to execute once per processed item. The first execution
  * creates the batch; later executions add a distinct processed key. The batch
- * becomes `ready` when every selected item has been processed.
+ * becomes `ready` when every declared item has been processed.
  */
-export function createResponseBatchProgressRewrite(
-  input: ResponseBatchProgressMacroInput,
-): RewriteProgram {
-  if (!input.id) throw new Error('Response batch rewrite id is required.');
-  if (input.batchesPath.length === 0) throw new Error('Response batch path cannot be empty.');
+export function createProgressBatchRewrite(input: ProgressBatchMacroInput): RewriteProgram {
+  if (!input.id) throw new Error('Progress batch rewrite id is required.');
+  if (input.batchesPath.length === 0) throw new Error('Progress batch path cannot be empty.');
+  const sourceField = input.sourceField ?? 'sourceId';
+  if (!sourceField) throw new Error('Progress batch source field cannot be empty.');
 
   const batches = input.batches;
   const matching = filter(
@@ -66,7 +67,7 @@ export function createResponseBatchProgressRewrite(
   const updatedExisting = record({
     id: path(existing, 'id'),
     kind: path(existing, 'kind'),
-    sourceWindowId: path(existing, 'sourceWindowId'),
+    [sourceField]: path(existing, sourceField),
     items: existingItems,
     processedKeys: nextProcessed,
     state: choose(readyExisting, literal('ready'), literal('collecting')),
@@ -75,7 +76,7 @@ export function createResponseBatchProgressRewrite(
   const created = record({
     id: input.batchId,
     kind: input.batchKind,
-    sourceWindowId: input.sourceWindowId,
+    [sourceField]: input.sourceId,
     items: input.items,
     processedKeys: newProcessed,
     state: choose(readyNew, literal('ready'), literal('collecting')),
@@ -100,6 +101,36 @@ export function createResponseBatchProgressRewrite(
     id: input.id,
     operations: [{ kind: 'set', path: [...input.batchesPath], value: updatedBatches }],
   };
+}
+
+export interface ResponseBatchProgressMacroInput {
+  id: string;
+  batchesPath: string[];
+  batches: CoreExpression;
+  batchId: CoreExpression;
+  batchKind: CoreExpression;
+  sourceWindowId: CoreExpression;
+  items: CoreExpression;
+  currentItemKey: CoreExpression;
+  metadata?: CoreExpression;
+}
+
+/** Response-window convenience wrapper over the generic progress batch. */
+export function createResponseBatchProgressRewrite(
+  input: ResponseBatchProgressMacroInput,
+): RewriteProgram {
+  return createProgressBatchRewrite({
+    id: input.id,
+    batchesPath: input.batchesPath,
+    batches: input.batches,
+    batchId: input.batchId,
+    batchKind: input.batchKind,
+    sourceField: 'sourceWindowId',
+    sourceId: input.sourceWindowId,
+    items: input.items,
+    currentItemKey: input.currentItemKey,
+    metadata: input.metadata,
+  });
 }
 
 /**
