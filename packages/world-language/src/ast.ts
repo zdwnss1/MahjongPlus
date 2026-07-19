@@ -6,9 +6,10 @@ import type {
   RewriteProgram,
 } from '@mahjongplus/world-calculus';
 import type { EntityRecord, RelationRecord, ZoneRecord } from '@mahjongplus/world-model';
+import type { DataSchema } from './dataSchema.js';
 
 export type Primitive = string | number | boolean | null;
-export type ParameterType = 'string' | 'number' | 'boolean' | 'string[]';
+export type ParameterType = 'string' | 'number' | 'boolean' | 'string[]' | 'object' | 'unknown';
 
 export interface CapabilityCallExpression {
   kind: 'capability-call';
@@ -161,6 +162,8 @@ export type EffectDefinition =
 export interface ActionDefinition {
   id: string;
   parameters: Record<string, ParameterType>;
+  /** Optional closed nested input contract. When present, the full parameters object must satisfy it. */
+  inputSchema?: DataSchema;
   requirements: RequirementDefinition[];
   effects: EffectDefinition[];
 }

@@ -29,6 +29,8 @@ describe('machine-readable riichi semantic catalog', () => {
       .toBe('fixture-only');
     expect(RIICHI_SEMANTIC_CATALOG.modules.find((entry) => entry.id === 'flow.continuing-multi-win')?.status)
       .toBe('fixture-only');
+    expect(RIICHI_SEMANTIC_CATALOG.modules.find((entry) => entry.id === 'service.riichi-response-hand-interpretation')?.status)
+      .toBe('partial');
   });
 
   it('keeps backend, service, profile and gap references internally consistent', () => {
@@ -68,12 +70,21 @@ describe('machine-readable riichi semantic catalog', () => {
     const settlement = RIICHI_SEMANTIC_CATALOG.services.find((entry) => entry.id === 'service.outcome-settlement');
     expect(settlement?.status).toBe('implemented');
     expect(settlement?.excludes).toEqual(expect.arrayContaining(['hand interpretation', 'yaku', 'fu']));
+
+    const interpretation = RIICHI_SEMANTIC_CATALOG.services.find((entry) =>
+      entry.id === 'service.finite-partition-interpretation');
+    expect(interpretation?.status).toBe('partial');
+    expect(interpretation?.excludes).toEqual(expect.arrayContaining([
+      'direct/self-draw interpretation', 'wait classification', 'yaku', 'fu', 'settlement',
+    ]));
+    expect(RIICHI_SEMANTIC_CATALOG.gaps.find((entry) => entry.id === 'gap.hand-interpretation')?.status)
+      .toBe('partial');
   });
 
   it('survives JSON round-trip as a pure data resource', () => {
     const roundTrip = JSON.parse(JSON.stringify(RIICHI_SEMANTIC_CATALOG)) as RiichiSemanticCatalog;
     expect(roundTrip).toEqual(RIICHI_SEMANTIC_CATALOG);
-    expect(roundTrip.schemaVersion).toBe('mahjong-semantic-catalog/0.1');
+    expect(roundTrip.schemaVersion).toBe('mahjong-semantic-catalog/0.2');
   });
 
   it('is readable through the generic LLM authoring-session resource boundary', () => {

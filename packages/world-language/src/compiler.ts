@@ -6,6 +6,7 @@ import {
 import { validateCorePrograms } from '@mahjongplus/world-calculus';
 import { stableHash } from './canonical.js';
 import type { EffectDefinition, ProcedureDefinition, WorldImage, WorldSource } from './ast.js';
+import { assertDataSchema } from './dataSchema.js';
 
 export interface CompileWorldOptions {
   capabilityCatalog?: CapabilityCatalogSnapshot;
@@ -166,6 +167,7 @@ export function compileWorld(source: WorldSource, options: CompileWorldOptions =
   }
 
   for (const action of source.actions) {
+    if (action.inputSchema) assertDataSchema(action.inputSchema, `action.${action.id}.inputSchema`);
     const procedureRequirements = action.requirements.filter((requirement) => requirement.kind === 'procedure-token');
     if (procedureRequirements.length > 1) throw new Error(`Action ${action.id} has ambiguous procedure token requirements.`);
     for (const requirement of action.requirements) {
