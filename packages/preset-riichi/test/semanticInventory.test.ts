@@ -97,7 +97,7 @@ describe('existing riichi semantic inventory', () => {
     expect(ids).toContain('riichi.common-flow');
     expect(ids).toContain('rule.super-riichi');
     expect(ids).toContain('rule.turbo-riichi.declaration');
-    expect(ids).toContain('rule.continuing-win-flow');
+    expect(ids).toContain('flow.continuing-multi-win');
 
     const common = RIICHI_RULE_MODULE_ANALYSES.find((entry) => entry.id === 'riichi.common-flow');
     expect(common?.provides.actions).toEqual([
