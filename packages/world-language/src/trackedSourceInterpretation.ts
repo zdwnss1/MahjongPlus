@@ -29,6 +29,7 @@ export interface TrackedSourcePartitionInterpretationDefinition {
 
 const mref = (path: string) => ({ $module: 'ref', path });
 const mmap = (source: unknown, as: string, value: unknown) => ({ $module: 'map', source, as, value });
+const mconcat = (...values: unknown[]) => ({ $module: 'concat', values });
 const mtemplate = (value: string) => ({ $module: 'template', value });
 const literal = (value: unknown): CoreExpression => ({ kind: 'literal', value });
 const variable = (name: string): CoreExpression => ({ kind: 'variable', name });
@@ -266,27 +267,28 @@ export function compileTrackedSourcePartitionInterpretationModule(
   };
 
   module.additions ??= {};
-  module.additions.entities = [
-    ...((module.additions.entities ?? []) as unknown[]),
-    mmap(mref('bindings.playerIds'), 'subjectId', {
-      id: mtemplate(`${definition.id}:source:\${locals.subjectId}`),
-      kind: sourceEntityKind,
-      components: {
-        responseWindow: {
-          id: mtemplate(`${definition.id}:source:\${locals.subjectId}`),
-          definitionId: sourceDefinitionId,
-          state: 'unavailable',
-          participants: [mref('locals.subjectId')],
-          sourceActorId: mref('locals.subjectId'),
-          sourceEventId: null,
-          sourceEntityId: null,
-          parentTokenId: null,
-          submissions: [],
-          selected: [],
-        },
+  const generatedSourceEntities = mmap(mref('bindings.playerIds'), 'subjectId', {
+    id: mtemplate(`${definition.id}:source:\${locals.subjectId}`),
+    kind: sourceEntityKind,
+    components: {
+      responseWindow: {
+        id: mtemplate(`${definition.id}:source:\${locals.subjectId}`),
+        definitionId: sourceDefinitionId,
+        state: 'unavailable',
+        participants: [mref('locals.subjectId')],
+        sourceActorId: mref('locals.subjectId'),
+        sourceEventId: null,
+        sourceEntityId: null,
+        parentTokenId: null,
+        submissions: [],
+        selected: [],
       },
-    }),
-  ];
+    },
+  });
+  module.additions.entities = mconcat(
+    module.additions.entities ?? [],
+    generatedSourceEntities,
+  ) as unknown as unknown[];
   module.additions.corePrograms ??= {};
   module.additions.corePrograms.constraints = [
     ...((module.additions.corePrograms.constraints ?? []) as unknown[]),
