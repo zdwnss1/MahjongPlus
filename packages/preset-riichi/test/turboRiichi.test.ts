@@ -363,8 +363,10 @@ describe('declarative disclosure and continuing-win modules', () => {
     expect(validateRuleModuleDefinition(declaration)).toEqual([]);
     expect(validateRuleModuleDefinition(flow)).toEqual([]);
     const fixture = setup().fixture;
+    const repeated = setup().fixture;
     const kinds = collectKinds(fixture.source.corePrograms);
     expect(kinds.filter((kind) => !CORE_KINDS.has(kind))).toEqual([]);
-    expect(fixture.manifest.hash).toMatch(/^[a-f0-9]{64}$/);
+    expect(fixture.manifest.hash).toMatch(/^[a-f0-9]{16}$/);
+    expect(repeated.manifest.hash).toBe(fixture.manifest.hash);
   });
 });
