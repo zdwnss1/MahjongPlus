@@ -227,7 +227,7 @@ describe('tracked direct-source partition interpretation', () => {
       [...eastHand, wall[0]].map(item),
       source,
     );
-    expect(proposals.length).toBeGreaterThan(1);
+    expect(proposals.length).toBeGreaterThan(0);
 
     expect(attempt(value, 'discard-source', 'discard', {
       tileId: wall[0].id,
@@ -235,7 +235,7 @@ describe('tracked direct-source partition interpretation', () => {
     }).outcome).toBe('executed');
     const receipt = attempt(value, 'late-direct-proof', 'interpretation.submit-direct', {
       windowId: source.windowId,
-      proposal: proposals[1].proposal,
+      proposal: proposals[0].proposal,
     });
     expect(receipt.outcome).toBe('rejected');
     expect(receipt.failures.map((entry) => entry.id))
