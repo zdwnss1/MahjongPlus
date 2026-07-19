@@ -22,11 +22,8 @@ export interface TrackedSourcePartitionInterpretationDefinition {
   sourceDefinitionId?: string;
   sourceEntityKind?: string;
   sourceMode?: string;
-  /** Event type used to update the current source for a subject. */
   movementEventType?: string;
-  /** Component payload field containing the origin zone id. */
   movementFromZonePayloadPath?: string[];
-  /** Event subject path containing the moved entity id. */
   movementEntityPath?: string[];
 }
 
@@ -52,15 +49,68 @@ const all = (...values: CoreFormula[]): CoreFormula => ({ kind: 'all', values })
 const contains = (collection: CoreExpression, value: CoreExpression): CoreFormula => ({ kind: 'contains', collection, value });
 const aggregate = (operator: 'count' | 'sum' | 'min' | 'max', source: CoreExpression): CoreExpression => ({ kind: 'aggregate', operator, source });
 
-function replaceGeneratedLiterals(value: unknown, replacements: Record<string, unknown>): unknown {
-  if (Array.isArray(value)) return value.map((entry) => replaceGeneratedLiterals(entry, replacements));
-  if (!value || typeof value !== 'object') return value;
-  const recordValue = value as Record<string, unknown>;
-  if (recordValue.kind === 'literal' && typeof recordValue.value === 'string' && recordValue.value in replacements) {
-    return { ...recordValue, value: structuredClone(replacements[recordValue.value]) };
+function isLiteralValue(value: unknown, expected: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  return entry.kind === 'literal' && JSON.stringify(entry.value) === JSON.stringify(expected);
+}
+
+function pathEndsWith(value: unknown, suffix: string[]): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const entry = value as Record<string, unknown>;
+  if (entry.kind !== 'path' || !Array.isArray(entry.path)) return false;
+  const parts = entry.path as unknown[];
+  return suffix.length <= parts.length
+    && suffix.every((part, index) => parts[parts.length - suffix.length + index] === part);
+}
+
+function isGeneratedSourceRecord(value: Record<string, unknown>): boolean {
+  if (value.kind !== 'record' || !value.fields || typeof value.fields !== 'object') return false;
+  const fields = value.fields as Record<string, unknown>;
+  return ['mode', 'windowId', 'exposureId', 'sourceEntityId', 'sourceActorId']
+    .every((key) => key in fields);
+}
+
+function adaptGeneratedSourceNodes(
+  value: unknown,
+  sourceEntityKind: string,
+  sourceState: string,
+  sourceMode: string,
+): unknown {
+  if (Array.isArray(value)) {
+    return value.map((entry) => adaptGeneratedSourceNodes(entry, sourceEntityKind, sourceState, sourceMode));
   }
-  return Object.fromEntries(Object.entries(recordValue)
-    .map(([key, entry]) => [key, replaceGeneratedLiterals(entry, replacements)]));
+  if (!value || typeof value !== 'object') return value;
+  const entry = value as Record<string, unknown>;
+
+  if (entry.kind === 'compare' && entry.operator === 'eq') {
+    const left = adaptGeneratedSourceNodes(entry.left, sourceEntityKind, sourceState, sourceMode);
+    const right = adaptGeneratedSourceNodes(entry.right, sourceEntityKind, sourceState, sourceMode);
+    if (pathEndsWith(left, ['kind']) && isLiteralValue(right, 'response-window')) {
+      return { ...entry, left, right: { kind: 'literal', value: sourceEntityKind } };
+    }
+    if (pathEndsWith(right, ['kind']) && isLiteralValue(left, 'response-window')) {
+      return { ...entry, left: { kind: 'literal', value: sourceEntityKind }, right };
+    }
+    if (pathEndsWith(left, ['state']) && isLiteralValue(right, 'open')) {
+      return { ...entry, left, right: { kind: 'literal', value: sourceState } };
+    }
+    if (pathEndsWith(right, ['state']) && isLiteralValue(left, 'open')) {
+      return { ...entry, left: { kind: 'literal', value: sourceState }, right };
+    }
+    return { ...entry, left, right };
+  }
+
+  const adapted = Object.fromEntries(Object.entries(entry)
+    .map(([key, child]) => [key, adaptGeneratedSourceNodes(child, sourceEntityKind, sourceState, sourceMode)]));
+  if (isGeneratedSourceRecord(adapted)) {
+    const fields = adapted.fields as Record<string, unknown>;
+    return {
+      ...adapted,
+      fields: { ...fields, mode: { kind: 'literal', value: sourceMode } },
+    };
+  }
+  return adapted;
 }
 
 function requireAction(module: RuleModuleDefinition, actionId: string) {
@@ -76,6 +126,7 @@ export function compileTrackedSourcePartitionInterpretationModule(
   const sourceDefinitionId = definition.sourceDefinitionId ?? `${definition.id}.source`;
   const sourceEntityKind = definition.sourceEntityKind ?? 'interpretation-source';
   const sourceMode = definition.sourceMode ?? 'direct';
+  const sourceState = 'available';
   const actionId = definition.actionId ?? `${definition.id}.submit`;
   const trackId = definition.trackId ?? `track:interpretations:${definition.id}`;
   const reducerId = `${definition.id}.latest-source`;
@@ -105,7 +156,7 @@ export function compileTrackedSourcePartitionInterpretationModule(
   ];
 
   const reducers = variable('reducers');
-  const events = variable('event');
+  const event = variable('event');
   const state = variable('state');
   const sourceRecords = path(state, 'sources');
   const sourceReducer: EventReducerDefinition = {
@@ -120,18 +171,18 @@ export function compileTrackedSourcePartitionInterpretationModule(
     },
     transitions: [{
       when: all(
-        compare('eq', path(events, 'type'), literal(movementEventType)),
-        contains(literal(mref('bindings.sourceZoneIds')), path(events, ...fromZonePath)),
+        compare('eq', path(event, 'type'), literal(movementEventType)),
+        contains(literal(mref('bindings.sourceZoneIds')), path(event, ...fromZonePath)),
       ),
       updates: [{
         path: ['sources'],
         value: map(sourceRecords, 'sourceRecord', choose(
-          compare('eq', path(variable('sourceRecord'), 'subjectId'), path(events, 'actorId')),
+          compare('eq', path(variable('sourceRecord'), 'subjectId'), path(event, 'actorId')),
           record({
             subjectId: path(variable('sourceRecord'), 'subjectId'),
-            entityId: path(events, ...movedEntityPath),
-            exposureId: path(events, 'id'),
-            sourceActorId: path(events, 'actorId'),
+            entityId: path(event, ...movedEntityPath),
+            exposureId: path(event, 'id'),
+            sourceActorId: path(event, 'actorId'),
           }),
           variable('sourceRecord'),
         )),
@@ -165,7 +216,7 @@ export function compileTrackedSourcePartitionInterpretationModule(
           definitionId: literal(sourceDefinitionId),
           state: choose(
             compare('neq', path(actorSource, 'entityId'), literal(null)),
-            literal('available'),
+            literal(sourceState),
             literal('unavailable'),
           ),
           participants: list(variable('actorId')),
@@ -269,11 +320,7 @@ export function compileTrackedSourcePartitionInterpretationModule(
     },
   ];
 
-  const transformed = replaceGeneratedLiterals(module, {
-    'response-window': sourceEntityKind,
-    open: 'available',
-    response: sourceMode,
-  }) as RuleModuleDefinition;
+  const transformed = adaptGeneratedSourceNodes(module, sourceEntityKind, sourceState, sourceMode) as RuleModuleDefinition;
   transformed.metadata = {
     ...(transformed.metadata ?? {}),
     service: 'tracked-source-partition-interpretation',
