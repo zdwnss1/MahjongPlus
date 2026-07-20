@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --maxWorkers=1 --fileParallelism=false"
   },
   "dependencies": {
     "@mahjongplus/world-calculus": "0.1.0",
