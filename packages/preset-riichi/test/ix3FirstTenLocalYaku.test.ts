@@ -451,7 +451,7 @@ describe('ix3 local yaku entries 1–10', () => {
     ]));
   }, 30_000);
 
-  it('recognizes kakikomi and ordered pon-chi-kan-ron from durable event history', () => {
+  it('recognizes kakikomi from the uninterrupted first-own-draw window', () => {
     const directActions: WorldSource['actions'] = [
       {
         id: 'declare-self', parameters: {}, requirements: [],
@@ -477,6 +477,9 @@ describe('ix3 local yaku entries 1–10', () => {
       expect.objectContaining({ ruleId: 'local.kakikomi', value: 1 }),
     ]));
 
+  }, 45_000);
+
+  it('recognizes ordered pon-chi-kan-ron from durable event history', () => {
     const sequenceActions: WorldSource['actions'] = [
       ...(['pon', 'chi', 'open-kan'] as const).map((callType) => ({
         id: `emit-${callType}`,
@@ -505,7 +508,7 @@ describe('ix3 local yaku entries 1–10', () => {
     expect(contributions(sequence.runtime, sequence.contributionTrackId)).toEqual(expect.arrayContaining([
       expect.objectContaining({ ruleId: 'local.pon-chi-kan-ron', value: 1 }),
     ]));
-  }, 90_000);
+  }, 60_000);
 
   it('uses an explicit pre-hand commitment for no-chi/no-pon and invalidates it after a call', () => {
     const noCall = buildEvaluationRuntime(
