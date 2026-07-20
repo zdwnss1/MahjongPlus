@@ -7,6 +7,7 @@ export * from './directHandInterpretation.js';
 export * from './meldAwareInterpretation.js';
 export * from './waitClassificationModule.js';
 export * from './registeredYakuEvaluation.js';
+export * from './ix3FirstTenLocalYaku.js';
 export * from './outcomeSettlementPrograms.js';
 export * from './outcomeSettlementModule.js';
 export * from './ruleModuleCatalog.js';
