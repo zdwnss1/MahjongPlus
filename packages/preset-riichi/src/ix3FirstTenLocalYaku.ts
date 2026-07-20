@@ -351,7 +351,7 @@ const recentPonEvents = {
       { kind: 'compare', operator: 'eq', left: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['type'] }, right: { kind: 'literal', value: 'meld.committed' } },
       { kind: 'compare', operator: 'eq', left: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['actorId'] }, right: actorId },
       { kind: 'compare', operator: 'eq', left: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['payload', 'callType'] }, right: { kind: 'literal', value: 'pon' } },
-      { kind: 'compare', operator: 'eq', left: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['revision'] }, right: latestRevision },
+      { kind: 'compare', operator: 'eq', left: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['revision'] }, right: previousRevision },
     ],
   },
 };
