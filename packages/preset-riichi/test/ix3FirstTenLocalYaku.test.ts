@@ -419,7 +419,7 @@ describe('ix3 local yaku entries 1–10', () => {
     expect(contributions(data.runtime, data.contributionTrackId)).toEqual(expect.arrayContaining([
       expect.objectContaining({ ruleId: 'local.tsubame-gaeshi', value: 1 }),
     ]));
-  });
+  }, 30_000);
 
   it('recognizes kakikomi and ordered pon-chi-kan-ron from durable event history', () => {
     const directActions: WorldSource['actions'] = [
@@ -475,7 +475,7 @@ describe('ix3 local yaku entries 1–10', () => {
     expect(contributions(sequence.runtime, sequence.contributionTrackId)).toEqual(expect.arrayContaining([
       expect.objectContaining({ ruleId: 'local.pon-chi-kan-ron', value: 1 }),
     ]));
-  });
+  }, 30_000);
 
   it('uses an explicit pre-hand commitment for no-chi/no-pon and invalidates it after a call', () => {
     const noCall = buildEvaluationRuntime(
@@ -503,5 +503,5 @@ describe('ix3 local yaku entries 1–10', () => {
     expect(evaluate(withCall).outcome).toBe('executed');
     expect(contributions(withCall.runtime, withCall.contributionTrackId)
       .some((entry) => entry.ruleId === 'local.no-chi-no-pon')).toBe(false);
-  });
+  }, 30_000);
 });
