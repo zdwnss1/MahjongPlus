@@ -175,7 +175,7 @@ export const RIICHI_RESPONSE_WAIT_CLASSIFICATION_MODULE = compileWaitClassificat
   'service.riichi-response-wait-classification',
   'Riichi response source-group wait classification',
   'interpretation.submit-response',
-  'track:response-wait-classifications',
+  'track:wait-classifications',
 );
 
 export const RIICHI_DIRECT_WAIT_CLASSIFICATION_MODULE = compileWaitClassificationModule(
@@ -184,6 +184,9 @@ export const RIICHI_DIRECT_WAIT_CLASSIFICATION_MODULE = compileWaitClassificatio
   'interpretation.submit-direct',
   'track:direct-wait-classifications',
 );
+
+/** Backwards-compatible data alias for the response-source module. */
+export const RIICHI_WAIT_CLASSIFICATION_MODULE = RIICHI_RESPONSE_WAIT_CLASSIFICATION_MODULE;
 
 export const RIICHI_WAIT_CLASSIFICATION_MODULES: RuleModuleDefinition[] = [
   RIICHI_RESPONSE_WAIT_CLASSIFICATION_MODULE,
