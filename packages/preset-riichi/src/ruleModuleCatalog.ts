@@ -9,6 +9,7 @@ import { RIICHI_RESPONSE_INTERPRETATION_MODULE } from './handStructureProfiles.j
 import { LOCAL_YAKU_MODULES } from './localYaku.js';
 import { RIICHI_FIXED_MELD_CONTEXT_MODULES } from './meldAwareInterpretation.js';
 import { RIICHI_COMMON_FLOW_MODULE } from './riichiCommonFlowModule.js';
+import { RIICHI_REGISTERED_EVALUATION_MODULES } from './registeredYakuEvaluation.js';
 import { SUPER_RIICHI_MODULE } from './superRiichiModule.js';
 import {
   CONTINUING_WIN_FLOW_MODULE,
@@ -89,14 +90,14 @@ export const RIICHI_MODULE_BINDING_SELECTORS: Record<string, RuleModuleBindingSe
   },
   [RIICHI_RESPONSE_INTERPRETATION_MODULE.id]: {
     subjectZones: { kind: 'literal', value: STANDARD_SUBJECT_ZONES },
-    evidenceRelationType: { kind: 'relation-type', value: 'can-win-on' },
+    evidenceRelationType: { kind: 'relation-type', value: 'has-partition-shape' },
   },
   [RIICHI_DIRECT_INTERPRETATION_MODULE.id]: {
     playerIds: { kind: 'entity-id', entityKind: 'player', cardinality: 'many' },
     subjectZones: { kind: 'literal', value: STANDARD_SUBJECT_ZONES },
     sourceZoneIds: { kind: 'literal', value: ['wall.live', 'wall.dead'] },
     drawActionId: { kind: 'action-id', id: 'draw' },
-    evidenceRelationType: { kind: 'relation-type', value: 'can-win-on' },
+    evidenceRelationType: { kind: 'relation-type', value: 'has-partition-shape' },
   },
 };
 
@@ -115,6 +116,7 @@ export const RIICHI_RULE_MODULES: RuleModuleDefinition[] = [
   RIICHI_DIRECT_INTERPRETATION_MODULE,
   ...RIICHI_FIXED_MELD_CONTEXT_MODULES,
   ...RIICHI_WAIT_CLASSIFICATION_MODULES,
+  ...RIICHI_REGISTERED_EVALUATION_MODULES,
 ].map(catalogModule);
 
 export const RIICHI_RULE_MODULE_ANALYSES = RIICHI_RULE_MODULES.map((definition) =>
