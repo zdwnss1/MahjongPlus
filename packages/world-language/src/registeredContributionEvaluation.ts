@@ -141,7 +141,6 @@ export function compileRegisteredContributionEvaluationModule(
   const currentActionId = variable('actionEntityId');
   const params = variable('params');
   const targetInterpretationId = path(params, 'interpretationActionId');
-  const requestedSourceId = path(params, 'sourceEntityId');
   const interpretationIndex = { $module: 'entity-index', id: definition.interpretationTrackId } as unknown as string;
   const fixedIndex = { $module: 'entity-index', id: definition.fixedContextTrackId } as unknown as string;
   const waitIndex = { $module: 'entity-index', id: definition.waitTrackId } as unknown as string;
