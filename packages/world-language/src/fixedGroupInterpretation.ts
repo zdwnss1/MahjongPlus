@@ -38,6 +38,9 @@ const map = (source: CoreExpression, as: string, select: CoreExpression): CoreEx
 const concat = (...sources: CoreExpression[]): CoreExpression => ({ kind: 'concat', sources });
 const distinct = (source: CoreExpression): CoreExpression => ({ kind: 'distinct', source });
 const aggregate = (operator: 'count' | 'sum' | 'min' | 'max', source: CoreExpression): CoreExpression => ({ kind: 'aggregate', operator, source });
+const choose = (condition: CoreFormula, thenValue: CoreExpression, elseValue: CoreExpression): CoreExpression => ({
+  kind: 'if', condition, then: thenValue, else: elseValue,
+});
 const compare = (
   operator: 'eq' | 'neq' | 'lt' | 'lte' | 'gt' | 'gte',
   left: CoreExpression,
@@ -53,97 +56,27 @@ const quantify = (
   where: CoreFormula,
 ): CoreFormula => ({ kind: 'quantify', quantifier, source, as, where });
 
-function substituteExpression(
-  expression: CoreExpression,
-  replacements: Record<string, CoreExpression>,
-  shadowed = new Set<string>(),
-): CoreExpression {
-  if (expression.kind === 'literal') return structuredClone(expression);
-  if (expression.kind === 'variable') {
-    return !shadowed.has(expression.name) && replacements[expression.name]
-      ? structuredClone(replacements[expression.name])
-      : structuredClone(expression);
+function substitute(value: unknown, replacements: Record<string, CoreExpression>, bound = new Set<string>()): unknown {
+  if (Array.isArray(value)) return value.map((entry) => substitute(entry, replacements, bound));
+  if (!value || typeof value !== 'object') return value;
+  const entry = value as Record<string, unknown>;
+  if (entry.kind === 'variable' && typeof entry.name === 'string' && !bound.has(entry.name) && replacements[entry.name]) {
+    return structuredClone(replacements[entry.name]);
   }
-  if (expression.kind === 'path') return { ...expression, target: substituteExpression(expression.target, replacements, shadowed) };
-  if (expression.kind === 'list') return { ...expression, items: expression.items.map((entry) => substituteExpression(entry, replacements, shadowed)) };
-  if (expression.kind === 'record') {
-    return {
-      ...expression,
-      fields: Object.fromEntries(Object.entries(expression.fields)
-        .map(([key, value]) => [key, substituteExpression(value, replacements, shadowed)])),
-    };
+  let nested = bound;
+  if ((entry.kind === 'filter' || entry.kind === 'map' || entry.kind === 'quantify') && typeof entry.as === 'string') {
+    nested = new Set(bound).add(entry.as);
   }
-  if (expression.kind === 'if') {
-    return {
-      ...expression,
-      condition: substituteFormula(expression.condition, replacements, shadowed),
-      then: substituteExpression(expression.then, replacements, shadowed),
-      else: substituteExpression(expression.else, replacements, shadowed),
-    };
-  }
-  if (expression.kind === 'arithmetic') {
-    return {
-      ...expression,
-      left: substituteExpression(expression.left, replacements, shadowed),
-      right: substituteExpression(expression.right, replacements, shadowed),
-    };
-  }
-  if (expression.kind === 'filter') {
-    const nested = new Set(shadowed).add(expression.as);
-    return {
-      ...expression,
-      source: substituteExpression(expression.source, replacements, shadowed),
-      where: substituteFormula(expression.where, replacements, nested),
-    };
-  }
-  if (expression.kind === 'map') {
-    const nested = new Set(shadowed).add(expression.as);
-    return {
-      ...expression,
-      source: substituteExpression(expression.source, replacements, shadowed),
-      select: substituteExpression(expression.select, replacements, nested),
-    };
-  }
-  if (expression.kind === 'concat') return { ...expression, sources: expression.sources.map((entry) => substituteExpression(entry, replacements, shadowed)) };
-  if (expression.kind === 'flatten' || expression.kind === 'distinct') return { ...expression, source: substituteExpression(expression.source, replacements, shadowed) };
-  return {
-    ...expression,
-    source: substituteExpression(expression.source, replacements, shadowed),
-    value: expression.value ? substituteExpression(expression.value, replacements, shadowed) : undefined,
-  };
+  return Object.fromEntries(Object.entries(entry).map(([key, child]) => [
+    key,
+    substitute(child, replacements, key === 'source' ? bound : nested),
+  ]));
 }
 
-function substituteFormula(
+const substituteFormula = (
   formula: CoreFormula,
   replacements: Record<string, CoreExpression>,
-  shadowed = new Set<string>(),
-): CoreFormula {
-  if (formula.kind === 'boolean') return structuredClone(formula);
-  if (formula.kind === 'not') return { ...formula, value: substituteFormula(formula.value, replacements, shadowed) };
-  if (formula.kind === 'all' || formula.kind === 'any') {
-    return { ...formula, values: formula.values.map((entry) => substituteFormula(entry, replacements, shadowed)) };
-  }
-  if (formula.kind === 'compare') {
-    return {
-      ...formula,
-      left: substituteExpression(formula.left, replacements, shadowed),
-      right: substituteExpression(formula.right, replacements, shadowed),
-    };
-  }
-  if (formula.kind === 'contains') {
-    return {
-      ...formula,
-      collection: substituteExpression(formula.collection, replacements, shadowed),
-      value: substituteExpression(formula.value, replacements, shadowed),
-    };
-  }
-  const nested = new Set(shadowed).add(formula.as);
-  return {
-    ...formula,
-    source: substituteExpression(formula.source, replacements, shadowed),
-    where: substituteFormula(formula.where, replacements, nested),
-  };
-}
+): CoreFormula => substitute(formula, replacements) as CoreFormula;
 
 export function compileRelatedFixedGroupInterpretationModule(
   definition: RelatedFixedGroupInterpretationDefinition,
@@ -232,32 +165,21 @@ export function compileRelatedFixedGroupInterpretationModule(
     actorId: variable('actorId'),
     profileId: path(proposal, 'profileId'),
     structureId: path(proposal, 'structureId'),
-    closed: compare('eq', aggregate('count', groups), literal(0)) as unknown as CoreExpression,
+    closed: choose(
+      compare('eq', aggregate('count', groups), literal(0)),
+      literal(true),
+      literal(false),
+    ),
     fixedGroups: fixedGroupRecords,
   });
-  const operations: RewriteProgram['operations'] = [{
-    kind: 'set',
-    path: ['world', 'entities', trackIndex, 'components', 'fixedGroupContexts', 'records'],
-    value: concat(records, list(acceptedRecord)),
-  }];
-  if (definition.shapeRelationType) {
-    operations.push({
+  const rewrite: RewriteProgram = {
+    id: rewriteId,
+    operations: [{
       kind: 'set',
-      path: ['world', 'relations'],
-      value: concat(relations, list(record({
-        id: record({ interpretationActionId: variable('actionEntityId'), relationType: literal(definition.shapeRelationType) }),
-        type: literal(definition.shapeRelationType),
-        source: record({ kind: literal('player'), id: variable('actorId') }),
-        target: record({ kind: literal('tile'), id: path(proposal, 'sourceEntityId') }),
-        metadata: record({
-          interpretationActionId: variable('actionEntityId'),
-          profileId: path(proposal, 'profileId'),
-          structureId: path(proposal, 'structureId'),
-        }),
-      }))),
-    });
-  }
-  const rewrite: RewriteProgram = { id: rewriteId, operations };
+      path: ['world', 'entities', trackIndex, 'components', 'fixedGroupContexts', 'records'],
+      value: concat(records, list(acceptedRecord)),
+    }],
+  };
   return {
     id: definition.id,
     version: definition.version,
@@ -283,7 +205,19 @@ export function compileRelatedFixedGroupInterpretationModule(
         kind: 'action.effects' as const,
         actionId,
         placement: 'append' as const,
-        values: [{ kind: 'core.rewrite', programId: rewriteId }],
+        values: [
+          { kind: 'core.rewrite', programId: rewriteId },
+          ...(definition.shapeRelationType ? [{
+            kind: 'relation.connect',
+            relationType: definition.shapeRelationType,
+            source: { kind: 'actor' },
+            target: {
+              kind: 'entity',
+              entityKind: 'tile',
+              id: { kind: 'context', path: 'params.proposal.sourceEntityId' },
+            },
+          }] : []),
+        ],
       },
     ]),
     artifacts: { trackId, constraintId, rewriteId },
