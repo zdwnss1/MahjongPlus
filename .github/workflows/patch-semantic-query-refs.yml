@@ -1,3 +1,4 @@
+# One-shot type-narrowing migration; remove after it commits the generic guard.
 name: patch-semantic-position-guard
 on:
   pull_request:
