@@ -65,6 +65,12 @@ export const RIICHI_SEMANTIC_BINDING_PROFILE: SemanticBindingProfile = {
       'target-kind': ['target', 'kind'],
       'target-id': ['target', 'id'],
     },
+    record: {
+      'subject-id': ['subjectId'],
+      state: ['state'],
+      'allowed-modes': ['allowedModes'],
+      'declaration-kind': ['declarationType'],
+    },
     token: {
       'procedure-id': ['procedureId'],
       'node-id': ['nodeId'],
