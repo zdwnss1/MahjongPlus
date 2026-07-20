@@ -1,0 +1,36 @@
+name: patch-ix3-pon-recency
+on:
+  push:
+    branches: [agent/ix3-local-yaku-first-ten]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ix3-local-yaku-first-ten
+      - name: Patch recency predicate
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packages/preset-riichi/src/ix3FirstTenLocalYaku.ts')
+          s=p.read_text()
+          old="""const latestRevision = { kind: 'aggregate', operator: 'max', source: eventsExpression, as: 'event', value: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['revision'] } };"""
+          new="""const previousRevision = { kind: 'arithmetic', operator: 'subtract', left: { kind: 'variable', name: 'revision' }, right: { kind: 'literal', value: 1 } };"""
+          if old not in s: raise SystemExit('latestRevision declaration not found')
+          s=s.replace(old,new,1)
+          old2="""right: latestRevision,"""
+          new2="""right: previousRevision,"""
+          if old2 not in s: raise SystemExit('latestRevision use not found')
+          s=s.replace(old2,new2,1)
+          p.write_text(s)
+          PY
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add packages/preset-riichi/src/ix3FirstTenLocalYaku.ts
+          git commit -m 'Fix pon-riichi post-call recency' || exit 0
+          git push origin HEAD:agent/ix3-local-yaku-first-ten
