@@ -168,6 +168,7 @@ export function compileTransactionalFactActionModule(
       amount: compileSemanticValue(transfer.amount, definition.semanticProfile, { context }),
     }));
     const transferRecords = list(...transfers.map((transfer) => record({
+      ledger: literal(transfer.definition.ledger),
       from: transfer.from,
       to: transfer.to,
       amount: transfer.amount,
@@ -187,7 +188,7 @@ export function compileTransactionalFactActionModule(
       const relevantTransfers = filter(
         transferRecords,
         'transfer',
-        { kind: 'boolean', value: true },
+        compare('eq', path(variable('transfer'), 'ledger'), literal(ledgerBinding)),
       );
       const updatedBalance = (accountVariable: string): CoreExpression => {
         const accountId = path(variable(accountVariable), accountIdField);
