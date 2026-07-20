@@ -289,14 +289,17 @@ function quantifiedCondition(
   bound: BoundValues,
   continuation?: (next: BoundValues) => CoreFormula,
 ): CoreFormula {
-  const source = compileSemanticCollection(collection, profile, environment, bound);
+  const rawSource = compileSemanticCollection(collection, profile, environment, bound);
   const variableName = safeVariable(bind);
   const next = {
     ...bound,
     [bind]: { domain, expression: variable(variableName) },
   };
+  const classPredicate = eventClassCondition(bind, eventClass, profile, next);
+  const source: CoreExpression = classPredicate
+    ? { kind: 'filter', source: rawSource, as: variableName, where: classPredicate }
+    : rawSource;
   const itemPredicates = [
-    eventClassCondition(bind, eventClass, profile, next),
     where ? compileSemanticCondition(where, profile, environment, next) : undefined,
   ].filter((entry): entry is CoreFormula => Boolean(entry));
   const quantified: CoreFormula = {
