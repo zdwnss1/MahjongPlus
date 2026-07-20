@@ -233,7 +233,7 @@ function setExposure(runtime: WorldRuntime, trackId: string, eventId: string): v
 }
 
 function findEvent(runtime: WorldRuntime, type: string, actorId?: string) {
-  const event = runtime.journal.all().findLast((entry) => entry.type === type && (!actorId || entry.actorId === actorId));
+  const event = [...runtime.journal.all()].reverse().find((entry) => entry.type === type && (!actorId || entry.actorId === actorId));
   if (!event) throw new Error(`Missing event ${type}.`);
   return event;
 }
