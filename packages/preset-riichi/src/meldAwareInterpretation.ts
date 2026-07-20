@@ -126,7 +126,7 @@ export const RIICHI_RESPONSE_FIXED_MELD_CONTEXT_MODULE = compileSourceFixedMeldM
   'service.riichi-response-fixed-meld-context',
   'Riichi response existing meld interpretation context',
   'interpretation.submit-response',
-  'track:response-fixed-meld-contexts',
+  'track:fixed-meld-interpretation-contexts',
 );
 
 export const RIICHI_DIRECT_FIXED_MELD_CONTEXT_MODULE = compileSourceFixedMeldModule(
@@ -135,6 +135,9 @@ export const RIICHI_DIRECT_FIXED_MELD_CONTEXT_MODULE = compileSourceFixedMeldMod
   'interpretation.submit-direct',
   'track:direct-fixed-meld-contexts',
 );
+
+/** Backwards-compatible data alias for the response-source module. */
+export const RIICHI_FIXED_MELD_CONTEXT_MODULE = RIICHI_RESPONSE_FIXED_MELD_CONTEXT_MODULE;
 
 export const RIICHI_FIXED_MELD_CONTEXT_MODULES: RuleModuleDefinition[] = [
   RIICHI_RESPONSE_FIXED_MELD_CONTEXT_MODULE,
