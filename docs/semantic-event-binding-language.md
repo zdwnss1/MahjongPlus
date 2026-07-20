@@ -29,6 +29,6 @@ semantic rule data
 → World Image compilation
 ```
 
-Bounded semantic stress tests declare explicit execution budgets. Raising a test timeout does not change a rule formula, a core-program step limit, or runtime adjudication semantics.
+Bounded semantic stress tests declare explicit execution budgets. Independent semantic claims are tested as separate cases so a test runner receives progress updates without changing formulas, step limits, or adjudication semantics.
 
 The semantic layer does not execute at runtime and does not introduce callbacks or target-specific operators.
