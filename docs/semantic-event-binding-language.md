@@ -29,6 +29,6 @@ semantic rule data
 → World Image compilation
 ```
 
-Bounded semantic stress tests declare explicit execution budgets. Independent claims are isolated for runner progress, and any test-runner diagnostics remain separate from rule formulas, core step limits, and adjudication semantics.
+Bounded semantic stress tests declare explicit execution budgets. Independent claims are isolated into deterministic test shards so runner scheduling does not alter formulas, step limits, or adjudication semantics.
 
 The semantic layer does not execute at runtime and does not introduce callbacks or target-specific operators.
