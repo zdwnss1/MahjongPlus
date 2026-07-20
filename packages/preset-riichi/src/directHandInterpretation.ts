@@ -45,7 +45,7 @@ export const RIICHI_DIRECT_INTERPRETATION_MODULE: RuleModuleDefinition = {
       },
       sourceZoneIds: { type: 'literal', value: ['wall.live', 'wall.dead'] },
       drawActionId: { type: 'action-id', id: 'draw' },
-      evidenceRelationType: { type: 'relation-type', value: 'can-win-on' },
+      evidenceRelationType: { type: 'literal', value: 'has-partition-shape' },
     },
   },
 };
