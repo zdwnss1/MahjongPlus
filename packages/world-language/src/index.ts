@@ -12,5 +12,8 @@ export * from './trackedSourceInterpretation.js';
 export * from './fixedGroupInterpretation.js';
 export * from './registeredContributionEvaluation.js';
 export * from './expressionRegisteredContribution.js';
+export * from './semanticQuery.js';
+export * from './semanticRegisteredContribution.js';
+export * from './transactionalFactActions.js';
 export * from './mahjongMcp.js';
 export * from './mahjongAuthoring.js';
