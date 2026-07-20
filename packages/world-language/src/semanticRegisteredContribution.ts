@@ -21,6 +21,7 @@ export interface SemanticRegisteredContributionDefinition
 export interface SemanticRegisteredEligibilityRule {
   id: string;
   title?: string;
+  sourceModes?: string[];
   query: SemanticQueryDefinition;
   contributions: SemanticRegisteredContributionDefinition[];
   qualification: {
@@ -32,6 +33,7 @@ export interface SemanticRegisteredEligibilityRule {
 export interface SemanticRegisteredContributionEvaluationDefinition
   extends Omit<ExpressionRegisteredContributionEvaluationDefinition, 'rules'> {
   semanticProfile: SemanticBindingProfile;
+  sourceMode?: string;
   rules: SemanticRegisteredEligibilityRule[];
 }
 
@@ -164,7 +166,9 @@ export function compileSemanticRegisteredContributionEvaluationModule(
   definition: SemanticRegisteredContributionEvaluationDefinition,
 ): RuleModuleDefinition {
   const context = buildSemanticEvaluationContext(definition);
-  const rules = definition.rules.map((rule) => ({
+  const selectedRules = definition.rules.filter((rule) =>
+    !definition.sourceMode || !rule.sourceModes || rule.sourceModes.includes(definition.sourceMode));
+  const rules = selectedRules.map((rule) => ({
     id: rule.id,
     title: rule.title,
     predicate: compileSemanticQuery(rule.query, definition.semanticProfile, { context }),
@@ -184,7 +188,8 @@ export function compileSemanticRegisteredContributionEvaluationModule(
   compiled.metadata = {
     ...(compiled.metadata ?? {}),
     semanticBindingProfileId: definition.semanticProfile.id,
-    semanticQueryRuleIds: definition.rules.map((rule) => rule.id),
+    semanticQueryRuleIds: selectedRules.map((rule) => rule.id),
+    semanticSourceMode: definition.sourceMode,
   };
   return compiled;
 }
