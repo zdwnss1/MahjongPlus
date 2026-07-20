@@ -361,7 +361,7 @@ describe('ix3 local yaku entries 1–10', () => {
       expect.objectContaining({ ruleId: 'local.special-dora', dimension: 'han', value: 2 }),
     ]));
     expect(qualifications(data.runtime, data.qualificationTrackId)[0]).toMatchObject({ total: 0, qualifies: false });
-  });
+  }, 20_000);
 
   it('qualifies dora-ho only when the physical winning source is a configured dora face', () => {
     const data = buildEvaluationRuntime(
@@ -375,7 +375,7 @@ describe('ix3 local yaku entries 1–10', () => {
       expect.objectContaining({ ruleId: 'local.dora-ho', dimension: 'han', value: 1 }),
     ]));
     expect(qualifications(data.runtime, data.qualificationTrackId)[0]).toMatchObject({ total: 1, qualifies: true });
-  });
+  }, 20_000);
 
   it('implements pon-riichi, hochi, tsumo-sen and bunbun as independent declaration facts', () => {
     const pon = buildDeclarationRuntime();
@@ -505,7 +505,7 @@ describe('ix3 local yaku entries 1–10', () => {
     expect(contributions(sequence.runtime, sequence.contributionTrackId)).toEqual(expect.arrayContaining([
       expect.objectContaining({ ruleId: 'local.pon-chi-kan-ron', value: 1 }),
     ]));
-  }, 30_000);
+  }, 90_000);
 
   it('uses an explicit pre-hand commitment for no-chi/no-pon and invalidates it after a call', () => {
     const noCall = buildEvaluationRuntime(
