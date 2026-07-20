@@ -21,7 +21,9 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: registered-evaluation-typecheck
-          path: typecheck.log
+          path: |
+            typecheck.log
+            packages/world-language/src/registeredContributionEvaluation.ts
       - name: Enforce typecheck result
         shell: bash
         run: |
