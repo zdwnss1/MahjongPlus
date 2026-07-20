@@ -420,7 +420,11 @@ export function compileSemanticCondition(
     return compileEventSequence(condition.steps, condition.before, profile, environment, bound);
   }
 
-  const zones = worldCollection('zones', profile, environment);
+  if (condition.kind !== 'position') {
+  throw new Error(`Unsupported semantic condition ${String((condition as { kind?: unknown }).kind)}.`);
+}
+
+const zones = worldCollection('zones', profile, environment);
   const zoneName = safeVariable('position-zone');
   const entryName = safeVariable('position-entry');
   const zonePredicates: CoreFormula[] = [];
