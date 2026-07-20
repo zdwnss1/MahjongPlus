@@ -13,9 +13,11 @@ A rule instead declares:
 - module parameters, module bindings, action parameters, and normalized context fields;
 - applicable source modes, so response-only and direct-only rules compile into separate evaluation programs.
 
-A `SemanticBindingProfile` maps those names to one concrete World Image schema. Replacing the profile may change event types, payload fields, entity components, or zone layouts without rewriting rule predicates.
+A `SemanticBindingProfile` maps those names to one concrete World Image schema. Replacing the profile may change event types, payload fields, entity components, or zone layouts without rewriting rule predicates. For example, an event actor may be stored as `actorId` in one schema and as `subjects[0].id` in another; the rule continues to reference only the semantic property `actor`.
 
 Event classes are filtered before semantic quantification. A sequence over `pon → chi → kan` therefore ranges over three indexed event subsets rather than repeatedly traversing the entire journal.
+
+Physical-position tests operate over real ordered Zone entries. Profiles declare the semantic paths for zone role, entity identity, ordinal, and state; fixture and production worlds must provide the physical layout rather than replacing position checks with score evidence.
 
 Compilation remains deterministic:
 
