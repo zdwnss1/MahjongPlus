@@ -10,5 +10,6 @@ export * from './bindingResolution.js';
 export * from './partitionInterpretation.js';
 export * from './trackedSourceInterpretation.js';
 export * from './fixedGroupInterpretation.js';
+export * from './registeredContributionEvaluation.js';
 export * from './mahjongMcp.js';
 export * from './mahjongAuthoring.js';
