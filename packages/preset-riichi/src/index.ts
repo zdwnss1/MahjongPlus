@@ -2,6 +2,7 @@ export * from './random.js';
 export * from './wall.js';
 export * from './preset.js';
 export * from './riichiCommonFlowModule.js';
+export * from './riichiSemanticBindingProfile.js';
 export * from './handStructureProfiles.js';
 export * from './directHandInterpretation.js';
 export * from './meldAwareInterpretation.js';
