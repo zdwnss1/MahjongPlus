@@ -1,0 +1,84 @@
+name: fetch-ix3-local-page
+on:
+  push:
+    branches: [research/ix3-local-page]
+jobs:
+  fetch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch live and archived page
+        shell: bash
+        run: |
+          set -u
+          mkdir -p artifact
+          target='http://www.ix3.jp/hiii/02mahken/1-10-1local.htm'
+          echo "$target" > artifact/target.txt
+
+          curl -L --compressed --max-time 60 -A 'Mozilla/5.0' -D artifact/live.headers "$target" -o artifact/live.raw || true
+          file artifact/live.raw > artifact/live.file.txt 2>&1 || true
+
+          curl -L --compressed --max-time 60 -A 'Mozilla/5.0' \
+            --get --data-urlencode "url=$target" \
+            'https://archive.org/wayback/available' \
+            -o artifact/wayback-available.json || true
+
+          curl -L --compressed --max-time 90 -A 'Mozilla/5.0' \
+            --get --data-urlencode "url=$target" \
+            --data-urlencode 'output=json' \
+            --data-urlencode 'filter=statuscode:200' \
+            --data-urlencode 'filter=mimetype:text/html' \
+            --data-urlencode 'fl=timestamp,original,statuscode,mimetype,digest' \
+            'https://web.archive.org/cdx/search/cdx' \
+            -o artifact/wayback-cdx.json || true
+
+          python - <<'PY'
+          import json, pathlib, subprocess
+          p=pathlib.Path('artifact/wayback-available.json')
+          if p.exists():
+              try:
+                  data=json.loads(p.read_text(errors='replace'))
+                  u=data.get('archived_snapshots',{}).get('closest',{}).get('url')
+                  if u:
+                      if u.startswith('http://'): u='https://'+u[7:]
+                      parts=u.split('/web/',1)
+                      if len(parts)==2:
+                          stamp, original=parts[1].split('/',1)
+                          u=parts[0]+'/web/'+stamp+'id_/'+original
+                      pathlib.Path('artifact/wayback-selected-url.txt').write_text(u)
+                      subprocess.run(['curl','-L','--compressed','--max-time','90','-A','Mozilla/5.0',u,'-o','artifact/wayback.raw'],check=False)
+              except Exception as e:
+                  pathlib.Path('artifact/wayback-error.txt').write_text(repr(e))
+          PY
+
+          curl -L --compressed --max-time 90 -A 'Mozilla/5.0' \
+            --get --data-urlencode "versionHistory=$target" \
+            --data-urlencode 'maxItems=50' \
+            --data-urlencode 'prettyPrint=true' \
+            'https://arquivo.pt/textsearch' \
+            -o artifact/arquivo-history.json || true
+
+          python - <<'PY'
+          import json, pathlib, subprocess
+          p=pathlib.Path('artifact/arquivo-history.json')
+          if p.exists():
+              try:
+                  data=json.loads(p.read_text(errors='replace'))
+                  items=data.get('response_items') or data.get('items') or []
+                  pathlib.Path('artifact/arquivo-item-count.txt').write_text(str(len(items)))
+                  if items:
+                      item=items[0]
+                      u=item.get('linkToOriginalFile') or item.get('linkToNoFrame') or item.get('linkToArchive')
+                      if u:
+                          pathlib.Path('artifact/arquivo-selected-url.txt').write_text(u)
+                          subprocess.run(['curl','-L','--compressed','--max-time','90','-A','Mozilla/5.0',u,'-o','artifact/arquivo.raw'],check=False)
+              except Exception as e:
+                  pathlib.Path('artifact/arquivo-error.txt').write_text(repr(e))
+          PY
+
+          ls -lah artifact > artifact/listing.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ix3-local-page
+          path: artifact
+          if-no-files-found: error
