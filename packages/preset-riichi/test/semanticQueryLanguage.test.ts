@@ -87,7 +87,7 @@ const profileA: SemanticBindingProfile = {
     context: commonContext,
     event: {
       type: ['type'],
-      actor: ['actorId'],
+      actor: ['subjects', '0', 'id'],
       revision: ['revision'],
       'call-kind': ['payload', 'actionKind'],
     },
@@ -117,7 +117,7 @@ const profileB: SemanticBindingProfile = {
     context: commonContext,
     event: {
       type: ['type'],
-      actor: ['actorId'],
+      actor: ['subjects', '0', 'id'],
       revision: ['revision'],
       'call-kind': ['payload', 'callVariant'],
     },
