@@ -1,38 +1,12 @@
-# One-shot semantic query migration; restored after source files are committed.
 name: ci
 on:
   push:
   pull_request:
-permissions:
-  contents: write
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: agent/ix3-local-yaku-first-ten
-      - name: Apply semantic query refactor
-        if: github.actor != 'github-actions[bot]'
-        shell: bash
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          python scripts/apply_semantic_query_refactor.py
-          for path in \
-            packages/world-language/src/semanticQuery.ts \
-            packages/world-language/src/semanticRegisteredContribution.ts \
-            packages/world-language/src/transactionalFactActions.ts \
-            packages/preset-riichi/src/ix3FirstTenLocalYaku.ts \
-            packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts; do
-            sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=agent/ix3-local-yaku-first-ten" --jq .sha)
-            content=$(base64 -w0 "$path")
-            gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${path}" \
-              -f message="Apply semantic refactor to ${path}" \
-              -f content="$content" \
-              -f branch='agent/ix3-local-yaku-first-ten' \
-              -f sha="$sha" >/dev/null
-          done
       - uses: actions/setup-node@v4
         with:
           node-version: 22
