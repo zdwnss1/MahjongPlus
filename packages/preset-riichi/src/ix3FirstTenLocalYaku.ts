@@ -343,7 +343,7 @@ const existingPublishedDeclarationEvents = {
     ],
   },
 };
-const latestRevision = { kind: 'aggregate', operator: 'max', source: eventsExpression, as: 'event', value: { kind: 'path', target: { kind: 'variable', name: 'event' }, path: ['revision'] } };
+const previousRevision = { kind: 'arithmetic', operator: 'subtract', left: { kind: 'variable', name: 'revision' }, right: { kind: 'literal', value: 1 } };
 const recentPonEvents = {
   kind: 'filter', source: eventsExpression, as: 'event',
   where: {
