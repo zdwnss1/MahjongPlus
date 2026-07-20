@@ -7,14 +7,14 @@ import {
 import { RIICHI_DIRECT_INTERPRETATION_MODULE } from './directHandInterpretation.js';
 import { RIICHI_RESPONSE_INTERPRETATION_MODULE } from './handStructureProfiles.js';
 import { LOCAL_YAKU_MODULES } from './localYaku.js';
-import { RIICHI_FIXED_MELD_CONTEXT_MODULE } from './meldAwareInterpretation.js';
+import { RIICHI_FIXED_MELD_CONTEXT_MODULES } from './meldAwareInterpretation.js';
 import { RIICHI_COMMON_FLOW_MODULE } from './riichiCommonFlowModule.js';
 import { SUPER_RIICHI_MODULE } from './superRiichiModule.js';
 import {
   CONTINUING_WIN_FLOW_MODULE,
   TURBO_DECLARATION_MODULE,
 } from './turboRiichiModules.js';
-import { RIICHI_WAIT_CLASSIFICATION_MODULE } from './waitClassificationModule.js';
+import { RIICHI_WAIT_CLASSIFICATION_MODULES } from './waitClassificationModule.js';
 
 const STANDARD_SUBJECT_ZONES = [
   { subjectId: 'east', zoneId: 'hand:east' },
@@ -113,8 +113,8 @@ export const RIICHI_RULE_MODULES: RuleModuleDefinition[] = [
   CONTINUING_WIN_FLOW_MODULE,
   RIICHI_RESPONSE_INTERPRETATION_MODULE,
   RIICHI_DIRECT_INTERPRETATION_MODULE,
-  RIICHI_FIXED_MELD_CONTEXT_MODULE,
-  RIICHI_WAIT_CLASSIFICATION_MODULE,
+  ...RIICHI_FIXED_MELD_CONTEXT_MODULES,
+  ...RIICHI_WAIT_CLASSIFICATION_MODULES,
 ].map(catalogModule);
 
 export const RIICHI_RULE_MODULE_ANALYSES = RIICHI_RULE_MODULES.map((definition) =>
