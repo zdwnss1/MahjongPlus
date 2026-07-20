@@ -12,5 +12,14 @@ jobs:
           node-version: 22
       - run: npm install
       - run: npm run typecheck
-      - run: npm test
+      - name: Run tests with final semantic binding diagnostics
+        shell: bash
+        run: |
+          set -o pipefail
+          npm test 2>&1 | tee test.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: semantic-binding-final-test-log
+          path: test.log
       - run: npm run build
