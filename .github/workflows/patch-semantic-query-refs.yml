@@ -1,3 +1,4 @@
+# One-shot migration workflow; removed after the generic reference patch is committed.
 name: patch-semantic-query-refs
 on:
   pull_request:
