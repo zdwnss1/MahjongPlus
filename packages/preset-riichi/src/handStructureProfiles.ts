@@ -183,7 +183,7 @@ export const RIICHI_RESPONSE_INTERPRETATION_MODULE: RuleModuleDefinition = {
     grantsScore: false,
     grantsWinSettlement: false,
     bindingSelectors: {
-      evidenceRelationType: { type: 'literal', value: 'can-win-on' },
+      evidenceRelationType: { type: 'literal', value: 'has-partition-shape' },
     },
   },
 };
