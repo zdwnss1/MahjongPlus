@@ -2,6 +2,8 @@ name: fetch-ix3-local-page
 on:
   push:
     branches: [research/ix3-local-page]
+  pull_request:
+    branches: [main]
 jobs:
   fetch:
     runs-on: ubuntu-latest
