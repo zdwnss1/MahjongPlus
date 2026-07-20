@@ -35,6 +35,8 @@ describe('machine-readable riichi semantic catalog', () => {
       .toBe('partial');
     expect(RIICHI_SEMANTIC_CATALOG.modules.find((entry) => entry.id === 'service.riichi-response-wait-classification')?.status)
       .toBe('partial');
+    expect(RIICHI_SEMANTIC_CATALOG.modules.find((entry) => entry.id === 'service.riichi-response-registered-evaluation')?.status)
+      .toBe('partial');
   });
 
   it('keeps backend, service, profile and gap references internally consistent', () => {
@@ -83,7 +85,7 @@ describe('machine-readable riichi semantic catalog', () => {
       'accepted interpretation facts',
     ]));
     expect(interpretation?.excludes).toEqual(expect.arrayContaining([
-      'tenpai enumeration', 'yaku', 'fu', 'settlement',
+      'tenpai enumeration', 'yaku qualification', 'fu', 'settlement',
     ]));
 
     const fixedGroup = RIICHI_SEMANTIC_CATALOG.services.find((entry) =>
@@ -99,14 +101,28 @@ describe('machine-readable riichi semantic catalog', () => {
     expect(wait?.status).toBe('partial');
     expect(wait?.excludes).toEqual(expect.arrayContaining(['pre-win tenpai waits', 'yaku qualification']));
 
+    const evaluation = RIICHI_SEMANTIC_CATALOG.services.find((entry) =>
+      entry.id === 'service.registered-contribution-evaluation');
+    expect(evaluation?.status).toBe('partial');
+    expect(evaluation?.provides).toEqual(expect.arrayContaining([
+      'signed multidimensional contribution facts',
+      'minimum-yaku qualification records',
+      'separate can-win-on qualification action',
+    ]));
+    expect(evaluation?.excludes).toEqual(expect.arrayContaining([
+      'complete standard yaku registry', 'fu', 'payments', 'settlement',
+    ]));
+
     expect(RIICHI_SEMANTIC_CATALOG.gaps.find((entry) => entry.id === 'gap.hand-interpretation')?.status)
+      .toBe('partial');
+    expect(RIICHI_SEMANTIC_CATALOG.gaps.find((entry) => entry.id === 'gap.yaku-evaluation-pipeline')?.status)
       .toBe('partial');
   });
 
   it('survives JSON round-trip as a pure data resource', () => {
     const roundTrip = JSON.parse(JSON.stringify(RIICHI_SEMANTIC_CATALOG)) as RiichiSemanticCatalog;
     expect(roundTrip).toEqual(RIICHI_SEMANTIC_CATALOG);
-    expect(roundTrip.schemaVersion).toBe('mahjong-semantic-catalog/0.4');
+    expect(roundTrip.schemaVersion).toBe('mahjong-semantic-catalog/0.5');
   });
 
   it('is readable through the generic LLM authoring-session resource boundary', () => {
