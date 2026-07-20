@@ -78,36 +78,65 @@ const consecutive = all(
   ),
 );
 
-const compiled = compileRelatedFixedGroupInterpretationModule({
-  id: 'service.riichi-fixed-meld-context',
-  version: '1.0.0',
-  title: 'Riichi existing meld interpretation context',
-  interpretationActionIds: ['interpretation.submit-response', 'interpretation.submit-direct'],
-  profileFixedGroupCounts: {
-    ...RIICHI_STANDARD_STRUCTURE_FIXED_GROUP_COUNTS,
-    'structure.seven-pairs': 0,
-    'structure.thirteen-orphans': 0,
-  },
-  groupEntityKind: 'meld',
-  groupOwnerPath: ['components', 'meld', 'ownerId'],
-  groupTypePath: ['components', 'meld', 'callType'],
-  membershipRelationType: 'contains',
-  patterns: [
-    { groupType: 'pon', patternId: 'group.triplet.same-face', size: 3, predicate: sameFace },
-    { groupType: 'chi', patternId: 'group.sequence.same-suit', size: 3, predicate: consecutive },
-    { groupType: 'open-kan', patternId: 'group.quad.same-face', size: 4, predicate: sameFace },
-  ],
-  trackId: 'track:fixed-meld-interpretation-contexts',
-  shapeRelationType: 'has-hand-shape',
-});
-
-export const RIICHI_FIXED_MELD_CONTEXT_MODULE: RuleModuleDefinition = {
-  ...compiled,
-  metadata: {
-    ...compiled.metadata,
-    integrationStatus: 'partial',
-    fixedGroupsAreAtomic: true,
-    grantsScore: false,
-    grantsWinSettlement: false,
-  },
+const profileFixedGroupCounts = {
+  ...RIICHI_STANDARD_STRUCTURE_FIXED_GROUP_COUNTS,
+  'structure.seven-pairs': 0,
+  'structure.thirteen-orphans': 0,
 };
+const patterns = [
+  { groupType: 'pon', patternId: 'group.triplet.same-face', size: 3, predicate: sameFace },
+  { groupType: 'chi', patternId: 'group.sequence.same-suit', size: 3, predicate: consecutive },
+  { groupType: 'open-kan', patternId: 'group.quad.same-face', size: 4, predicate: sameFace },
+];
+
+function compileSourceFixedMeldModule(
+  id: string,
+  title: string,
+  actionId: string,
+  trackId: string,
+): RuleModuleDefinition {
+  const compiled = compileRelatedFixedGroupInterpretationModule({
+    id,
+    version: '1.0.0',
+    title,
+    interpretationActionIds: [actionId],
+    profileFixedGroupCounts,
+    groupEntityKind: 'meld',
+    groupOwnerPath: ['components', 'meld', 'ownerId'],
+    groupTypePath: ['components', 'meld', 'callType'],
+    membershipRelationType: 'contains',
+    patterns,
+    trackId,
+    shapeRelationType: 'has-hand-shape',
+  });
+  return {
+    ...compiled,
+    metadata: {
+      ...compiled.metadata,
+      integrationStatus: 'partial',
+      fixedGroupsAreAtomic: true,
+      grantsScore: false,
+      grantsWinSettlement: false,
+      interpretationActionId: actionId,
+    },
+  };
+}
+
+export const RIICHI_RESPONSE_FIXED_MELD_CONTEXT_MODULE = compileSourceFixedMeldModule(
+  'service.riichi-response-fixed-meld-context',
+  'Riichi response existing meld interpretation context',
+  'interpretation.submit-response',
+  'track:response-fixed-meld-contexts',
+);
+
+export const RIICHI_DIRECT_FIXED_MELD_CONTEXT_MODULE = compileSourceFixedMeldModule(
+  'service.riichi-direct-fixed-meld-context',
+  'Riichi direct existing meld interpretation context',
+  'interpretation.submit-direct',
+  'track:direct-fixed-meld-contexts',
+);
+
+export const RIICHI_FIXED_MELD_CONTEXT_MODULES: RuleModuleDefinition[] = [
+  RIICHI_RESPONSE_FIXED_MELD_CONTEXT_MODULE,
+  RIICHI_DIRECT_FIXED_MELD_CONTEXT_MODULE,
+];
