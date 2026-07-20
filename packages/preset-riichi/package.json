@@ -14,7 +14,7 @@
   "scripts": {
     "build": "tsup src/index.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run --exclude test/ix3FirstTenLocalYaku.test.ts && vitest run test/ix3FirstTenLocalYaku.test.ts --maxWorkers=1 --fileParallelism=false -t \"keeps the source-page order explicit|counts contextual dora dynamically|qualifies dora-ho only|implements pon-riichi\" && vitest run test/ix3FirstTenLocalYaku.test.ts --maxWorkers=1 --fileParallelism=false -t \"recognizes tsubame-gaeshi|recognizes kakikomi|uses an explicit pre-hand commitment\" && vitest run test/ix3FirstTenLocalYaku.test.ts --maxWorkers=1 --fileParallelism=false -t \"recognizes ordered pon-chi-kan-ron\""
   },
   "dependencies": {
     "@mahjongplus/world-calculus": "0.1.0",

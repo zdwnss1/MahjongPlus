@@ -6,6 +6,10 @@ import {
 } from '@mahjongplus/world-language';
 import { RIICHI_DIRECT_INTERPRETATION_MODULE } from './directHandInterpretation.js';
 import { RIICHI_RESPONSE_INTERPRETATION_MODULE } from './handStructureProfiles.js';
+import {
+  IX3_FIRST_TEN_DECLARATION_MODULE,
+  IX3_FIRST_TEN_MODULES,
+} from './ix3FirstTenLocalYaku.js';
 import { LOCAL_YAKU_MODULES } from './localYaku.js';
 import { RIICHI_FIXED_MELD_CONTEXT_MODULES } from './meldAwareInterpretation.js';
 import { RIICHI_COMMON_FLOW_MODULE } from './riichiCommonFlowModule.js';
@@ -99,6 +103,14 @@ export const RIICHI_MODULE_BINDING_SELECTORS: Record<string, RuleModuleBindingSe
     drawActionId: { kind: 'action-id', id: 'draw' },
     evidenceRelationType: { kind: 'relation-type', value: 'has-partition-shape' },
   },
+  [IX3_FIRST_TEN_DECLARATION_MODULE.id]: {
+    ledgerId: { kind: 'entity-id', entityKind: 'resource-ledger', component: 'ledger' },
+    singleWaitRelationType: {
+      kind: 'relation-type',
+      value: 'has-single-wait',
+      requireExisting: true,
+    },
+  },
 };
 
 function catalogModule(definition: RuleModuleDefinition): RuleModuleDefinition {
@@ -117,6 +129,7 @@ export const RIICHI_RULE_MODULES: RuleModuleDefinition[] = [
   ...RIICHI_FIXED_MELD_CONTEXT_MODULES,
   ...RIICHI_WAIT_CLASSIFICATION_MODULES,
   ...RIICHI_REGISTERED_EVALUATION_MODULES,
+  ...IX3_FIRST_TEN_MODULES,
 ].map(catalogModule);
 
 export const RIICHI_RULE_MODULE_ANALYSES = RIICHI_RULE_MODULES.map((definition) =>
