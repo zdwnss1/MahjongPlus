@@ -165,6 +165,36 @@ function evaluationWorld(
       },
     },
   ];
+  world.zones = [
+    {
+      id: 'hand:south',
+      kind: 'hand',
+      ordered: true,
+      entries: tiles
+        .filter((entry) => direct || entry.id !== source.id)
+        .map((entry, ordinal) => ({
+          slotId: `hand:south:slot:${ordinal}`,
+          entityId: entry.id,
+          ordinal,
+          metadata: {},
+          state: 'occupied' as const,
+        })),
+      metadata: {},
+    },
+    ...(direct ? [] : [{
+      id: 'river:east',
+      kind: 'river',
+      ordered: true,
+      entries: [{
+        slotId: 'river:east:slot:0',
+        entityId: source.id,
+        ordinal: 0,
+        metadata: {},
+        state: 'occupied' as const,
+      }],
+      metadata: {},
+    }]),
+  ];
   world.relations = [{
     id: 'relation:shape',
     type: 'has-hand-shape',
