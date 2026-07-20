@@ -25,9 +25,12 @@ const RESPONSE_FIXED_ID = 'service.riichi-response-fixed-meld-context';
 const DIRECT_FIXED_ID = 'service.riichi-direct-fixed-meld-context';
 const RESPONSE_WAIT_ID = 'service.riichi-response-wait-classification';
 const DIRECT_WAIT_ID = 'service.riichi-direct-wait-classification';
+const RESPONSE_EVALUATION_ID = 'service.riichi-response-registered-evaluation';
+const DIRECT_EVALUATION_ID = 'service.riichi-direct-registered-evaluation';
 const INTERPRETATION_SERVICE_ID = 'service.finite-partition-interpretation';
 const FIXED_GROUP_SERVICE_ID = 'service.related-fixed-group-context';
 const WAIT_SERVICE_ID = 'service.source-group-classification';
+const REGISTERED_EVALUATION_SERVICE_ID = 'service.registered-contribution-evaluation';
 
 const moduleNotes: Record<string, Pick<SemanticModuleRecord, 'status' | 'layer' | 'integrationNotes'>> = {
   [RESPONSE_INTERPRETATION_ID]: {
@@ -35,7 +38,7 @@ const moduleNotes: Record<string, Pick<SemanticModuleRecord, 'status' | 'layer' 
     layer: 'win-interpretation',
     integrationNotes: [
       'Response proposals are revalidated against the current physical hand zone and response source entity.',
-      'Accepted proposals create durable interpretation facts and temporary can-win-on compatibility evidence.',
+      'Accepted proposals create durable interpretation facts and has-partition-shape evidence, not final win qualification.',
     ],
   },
   [DIRECT_INTERPRETATION_ID]: {
@@ -43,7 +46,7 @@ const moduleNotes: Record<string, Pick<SemanticModuleRecord, 'status' | 'layer' 
     layer: 'win-interpretation',
     integrationNotes: [
       'The latest directly acquired physical source is tracked per subject without creating an open response window.',
-      'Accepted proposals use the same authoritative finite-partition grammar as response interpretations.',
+      'Accepted proposals use the same authoritative finite-partition grammar and produce has-partition-shape evidence.',
     ],
   },
   [RESPONSE_FIXED_ID]: {
@@ -51,7 +54,7 @@ const moduleNotes: Record<string, Pick<SemanticModuleRecord, 'status' | 'layer' 
     layer: 'win-interpretation-context',
     integrationNotes: [
       'Existing response-side pon, chi and open-kan entities are validated through physical contains relations.',
-      'Fixed groups remain atomic and are recorded beside the accepted concealed partition.',
+      'Fixed groups remain atomic and produce has-hand-shape evidence beside the concealed partition.',
     ],
   },
   [DIRECT_FIXED_ID]: {
@@ -72,6 +75,22 @@ const moduleNotes: Record<string, Pick<SemanticModuleRecord, 'status' | 'layer' 
     layer: 'wait-interpretation',
     integrationNotes: ['Classifies the direct source position in exactly one accepted group without granting score.'],
   },
+  [RESPONSE_EVALUATION_ID]: {
+    status: 'partial',
+    layer: 'yaku-qualification',
+    integrationNotes: [
+      'Registered predicates consume accepted response interpretation, fixed-group and wait facts.',
+      'A separate qualify action creates can-win-on only after signed stage-ordered minimum-yaku qualification.',
+    ],
+  },
+  [DIRECT_EVALUATION_ID]: {
+    status: 'partial',
+    layer: 'yaku-qualification',
+    integrationNotes: [
+      'Registered predicates consume accepted direct-source interpretation, fixed-group and wait facts.',
+      'The direct-source qualification path shares the same contribution compiler and minimum-yaku gate.',
+    ],
+  },
 };
 
 const modules = BASE_RIICHI_SEMANTIC_CATALOG.modules.map((module): SemanticModuleRecord => {
@@ -91,14 +110,14 @@ const services: SemanticServiceRecord[] = [
       'closed-calculus authoritative physical proposal validation',
       'response and direct physical-source adapters',
       'accepted interpretation facts',
-      'configurable evidence relations',
+      'configurable structural evidence relations',
     ],
     inputs: [
       'physical tile entities', 'subject-to-zone bindings', 'response or tracked direct source',
       'group-pattern formulas', 'structure slots', 'structured interpretation proposal',
     ],
-    outputs: ['candidate proposals', 'accepted interpretation records', 'shape compatibility evidence'],
-    excludes: ['tenpai enumeration', 'yaku', 'han', 'fu', 'limits', 'payments', 'settlement'],
+    outputs: ['candidate proposals', 'accepted interpretation records', 'partition-shape evidence'],
+    excludes: ['tenpai enumeration', 'yaku qualification', 'han', 'fu', 'limits', 'payments', 'settlement'],
     publicApis: [
       'compileResponsePartitionInterpretationModule',
       'compileTrackedSourcePartitionInterpretationModule',
@@ -137,33 +156,76 @@ const services: SemanticServiceRecord[] = [
     excludes: ['pre-win tenpai waits', 'furiten', 'fu award', 'yaku qualification'],
     publicApis: [],
   },
+  {
+    id: REGISTERED_EVALUATION_SERVICE_ID,
+    title: 'Registered contribution and minimum-yaku qualification',
+    status: 'partial',
+    provides: [
+      'JSON-serializable eligibility predicate registry',
+      'normalized interpretation context over concealed and fixed physical tiles',
+      'signed multidimensional contribution facts',
+      'declared stage ordering',
+      'minimum-yaku qualification records',
+      'separate can-win-on qualification action',
+    ],
+    inputs: [
+      'accepted interpretation record', 'fixed-group context', 'wait classification',
+      'registered rule predicates', 'stage order', 'minimum qualification',
+    ],
+    outputs: ['contribution records', 'qualification records', 'qualified can-win-on relations'],
+    excludes: [
+      'complete standard yaku registry', 'all local-yaku artifact adapters', 'fu', 'limit arithmetic',
+      'dora consumption', 'payments', 'settlement',
+    ],
+    publicApis: ['compileRegisteredContributionEvaluationModule'],
+  },
 ];
 
 const gaps = BASE_RIICHI_SEMANTIC_CATALOG.gaps.map((gap): SemanticGapRecord => {
-  if (gap.id !== 'gap.hand-interpretation') return gap;
-  return {
-    ...gap,
-    status: 'partial',
-    currentEvidence: [
-      'A generic finite-partition registry describes four-groups-and-pair, seven-pairs and thirteen-orphans as data.',
-      'Response and direct proposals are authoritatively checked against current physical zones and source exposure.',
-      'Existing pon, chi and open-kan entities participate as atomic fixed groups through physical membership relations.',
-      'Accepted source groups are classified as single, double-pair, closed, edge, two-sided or orphan waits.',
-      'Structural acceptance creates has-hand-shape evidence independently from future yaku qualification.',
-    ],
-    notes: [
-      'The current implementation covers post-source accepted structures, not all pre-source tenpai alternatives.',
-      'Arbitrary non-partition special interpreters, concealed/added kan contexts and production yaku qualification remain missing.',
-      'can-win-on remains a temporary compatibility relation until minimum-yaku qualification is inserted.',
-    ],
-  };
+  if (gap.id === 'gap.hand-interpretation') {
+    return {
+      ...gap,
+      status: 'partial',
+      currentEvidence: [
+        'A generic finite-partition registry describes four-groups-and-pair, seven-pairs and thirteen-orphans as data.',
+        'Response and direct proposals are authoritatively checked against current physical zones and source exposure.',
+        'Existing pon, chi and open-kan entities participate as atomic fixed groups through physical membership relations.',
+        'Accepted source groups are classified as single, double-pair, closed, edge, two-sided or orphan waits.',
+        'Structural acceptance creates partition and hand-shape evidence independently from yaku qualification.',
+      ],
+      notes: [
+        'The current implementation covers post-source accepted structures, not all pre-source tenpai alternatives.',
+        'Arbitrary non-partition special interpreters and concealed/added kan contexts remain missing.',
+      ],
+    };
+  }
+  if (gap.id === 'gap.yaku-evaluation-pipeline') {
+    return {
+      ...gap,
+      status: 'partial',
+      currentEvidence: [
+        'A generic registered predicate compiler consumes normalized accepted interpretation contexts.',
+        'Contributions are durable signed facts with explicit dimensions, operations and stages.',
+        'Minimum-yaku qualification is evaluated separately from shape acceptance.',
+        'can-win-on is created only by a successful qualification action in the production module path.',
+        'The initial registry includes all simples, seven pairs, thirteen orphans and closed direct-source win.',
+        'Positive and negative qualification contributions are aggregated in declared stage order.',
+      ],
+      notes: [
+        'The standard yaku set is intentionally incomplete.',
+        'Existing local-yaku eligibility artifacts are not yet all adapted into the normalized context registry.',
+        'Dora, fu, limits and payments remain downstream concerns.',
+      ],
+    };
+  }
+  return gap;
 });
 
 const profiles: SemanticProfileRecord[] = [
   ...BASE_RIICHI_SEMANTIC_CATALOG.profiles,
   {
     id: 'profile.riichi-response-interpretation',
-    title: 'Response interpretation with fixed meld and wait context',
+    title: 'Response interpretation with fixed meld, wait and registered qualification',
     status: 'partial',
     backends: ['backend.riichi-physical-opening'],
     modules: [
@@ -171,6 +233,7 @@ const profiles: SemanticProfileRecord[] = [
       RESPONSE_INTERPRETATION_ID,
       RESPONSE_FIXED_ID,
       RESPONSE_WAIT_ID,
+      RESPONSE_EVALUATION_ID,
     ],
     services: [
       'service.rule-language-authoring',
@@ -178,6 +241,7 @@ const profiles: SemanticProfileRecord[] = [
       INTERPRETATION_SERVICE_ID,
       FIXED_GROUP_SERVICE_ID,
       WAIT_SERVICE_ID,
+      REGISTERED_EVALUATION_SERVICE_ID,
     ],
     unresolvedGaps: [
       'gap.hand-interpretation',
@@ -196,7 +260,7 @@ const profiles: SemanticProfileRecord[] = [
   },
   {
     id: 'profile.riichi-direct-interpretation',
-    title: 'Direct-source interpretation with fixed meld and wait context',
+    title: 'Direct-source interpretation with fixed meld, wait and registered qualification',
     status: 'partial',
     backends: ['backend.riichi-physical-opening'],
     modules: [
@@ -204,6 +268,7 @@ const profiles: SemanticProfileRecord[] = [
       DIRECT_INTERPRETATION_ID,
       DIRECT_FIXED_ID,
       DIRECT_WAIT_ID,
+      DIRECT_EVALUATION_ID,
     ],
     services: [
       'service.rule-language-authoring',
@@ -211,6 +276,7 @@ const profiles: SemanticProfileRecord[] = [
       INTERPRETATION_SERVICE_ID,
       FIXED_GROUP_SERVICE_ID,
       WAIT_SERVICE_ID,
+      REGISTERED_EVALUATION_SERVICE_ID,
     ],
     unresolvedGaps: [
       'gap.hand-interpretation',
@@ -231,7 +297,7 @@ const profiles: SemanticProfileRecord[] = [
 
 export const RIICHI_SEMANTIC_CATALOG: RiichiSemanticCatalog = {
   ...BASE_RIICHI_SEMANTIC_CATALOG,
-  schemaVersion: 'mahjong-semantic-catalog/0.4',
+  schemaVersion: 'mahjong-semantic-catalog/0.5',
   modules,
   services,
   profiles,
