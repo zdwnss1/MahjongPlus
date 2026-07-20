@@ -1,4 +1,4 @@
-# One-shot semantic query optimization migration; restored after it commits source changes.
+# One-shot semantic query migration; restored after source files are committed.
 name: ci
 on:
   push:
@@ -12,179 +12,27 @@ jobs:
       - uses: actions/checkout@v4
         with:
           ref: agent/ix3-local-yaku-first-ten
-      - name: Apply one-shot semantic query optimizations
+      - name: Apply semantic query refactor
         if: github.actor != 'github-actions[bot]'
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          query=Path('packages/world-language/src/semanticQuery.ts')
-          s=query.read_text()
-          old="""  const source = compileSemanticCollection(collection, profile, environment, bound);
-  const variableName = safeVariable(bind);
-  const next = {
-    ...bound,
-    [bind]: { domain, expression: variable(variableName) },
-  };
-  const itemPredicates = [
-    eventClassCondition(bind, eventClass, profile, next),
-    where ? compileSemanticCondition(where, profile, environment, next) : undefined,
-  ].filter((entry): entry is CoreFormula => Boolean(entry));
-"""
-          new="""  const rawSource = compileSemanticCollection(collection, profile, environment, bound);
-  const variableName = safeVariable(bind);
-  const next = {
-    ...bound,
-    [bind]: { domain, expression: variable(variableName) },
-  };
-  const classPredicate = eventClassCondition(bind, eventClass, profile, next);
-  const source: CoreExpression = classPredicate
-    ? { kind: 'filter', source: rawSource, as: variableName, where: classPredicate }
-    : rawSource;
-  const itemPredicates = [
-    where ? compileSemanticCondition(where, profile, environment, next) : undefined,
-  ].filter((entry): entry is CoreFormula => Boolean(entry));
-"""
-          if old in s:
-              s=s.replace(old,new,1)
-          elif new not in s:
-              raise SystemExit('quantified source block not found')
-          query.write_text(s)
-
-          registered=Path('packages/world-language/src/semanticRegisteredContribution.ts')
-          s=registered.read_text()
-          if 'sourceModes?: string[];' not in s:
-              s=s.replace("""export interface SemanticRegisteredEligibilityRule {
-  id: string;
-  title?: string;
-""", """export interface SemanticRegisteredEligibilityRule {
-  id: string;
-  title?: string;
-  sourceModes?: string[];
-""", 1)
-          if 'sourceMode?: string;' not in s:
-              s=s.replace("""  semanticProfile: SemanticBindingProfile;
-  rules: SemanticRegisteredEligibilityRule[];
-}""", """  semanticProfile: SemanticBindingProfile;
-  sourceMode?: string;
-  rules: SemanticRegisteredEligibilityRule[];
-}""", 1)
-          if 'const selectedRules = definition.rules.filter' not in s:
-              s=s.replace("""  const rules = definition.rules.map((rule) => ({""", """  const selectedRules = definition.rules.filter((rule) =>
-    !definition.sourceMode || !rule.sourceModes || rule.sourceModes.includes(definition.sourceMode));
-  const rules = selectedRules.map((rule) => ({""", 1)
-          s=s.replace("semanticQueryRuleIds: definition.rules.map((rule) => rule.id),", "semanticQueryRuleIds: selectedRules.map((rule) => rule.id),\n    semanticSourceMode: definition.sourceMode,")
-          registered.write_text(s)
-
-          ix3=Path('packages/preset-riichi/src/ix3FirstTenLocalYaku.ts')
-          s=ix3.read_text()
-          for title, modes in [
-            ("title: '自摸セン',", "title: '自摸セン',\n    sourceModes: ['direct'],"),
-            ("title: 'ブンブン立直',", "title: 'ブンブン立直',\n    sourceModes: ['direct'],"),
-            ("title: '燕返し',", "title: '燕返し',\n    sourceModes: ['response'],"),
-            ("title: '書込',", "title: '書込',\n    sourceModes: ['direct'],"),
-            ("title: 'ポンチーカンロン',", "title: 'ポンチーカンロン',\n    sourceModes: ['response'],"),
-          ]:
-              if modes not in s:
-                  if title not in s: raise SystemExit(f'missing title {title}')
-                  s=s.replace(title,modes,1)
-          if "sourceMode: 'response'" not in s:
-              s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
-    interpretationTrackId: 'track:hand-interpretations',""", """    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
-    sourceMode: 'response',
-    interpretationTrackId: 'track:hand-interpretations',""", 1)
-          if "sourceMode: 'direct'" not in s:
-              s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
-    interpretationTrackId: 'track:direct-hand-interpretations',""", """    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
-    sourceMode: 'direct',
-    interpretationTrackId: 'track:direct-hand-interpretations',""", 1)
-          ix3.write_text(s)
-
-          tx=Path('packages/world-language/src/transactionalFactActions.ts')
-          s=tx.read_text()
-          old_records="""    const transferRecords = list(...transfers.map((transfer) => record({
-      from: transfer.from,
-      to: transfer.to,
-      amount: transfer.amount,
-    })));"""
-          new_records="""    const transferRecords = list(...transfers.map((transfer) => record({
-      ledger: literal(transfer.definition.ledger),
-      from: transfer.from,
-      to: transfer.to,
-      amount: transfer.amount,
-    })));"""
-          if old_records in s: s=s.replace(old_records,new_records,1)
-          old_filter="""      const relevantTransfers = filter(
-        transferRecords,
-        'transfer',
-        { kind: 'boolean', value: true },
-      );"""
-          new_filter="""      const relevantTransfers = filter(
-        transferRecords,
-        'transfer',
-        compare('eq', path(variable('transfer'), 'ledger'), literal(ledgerBinding)),
-      );"""
-          if old_filter in s: s=s.replace(old_filter,new_filter,1)
-          tx.write_text(s)
-
-          test=Path('packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts')
-          s=test.read_text()
-          marker="""  world.relations = [{
-    id: 'relation:shape',"""
-          zone_block="""  world.zones = [
-    {
-      id: 'hand:south',
-      kind: 'hand',
-      ordered: true,
-      entries: tiles
-        .filter((entry) => direct || entry.id !== source.id)
-        .map((entry, ordinal) => ({
-          slotId: `hand:south:slot:${ordinal}`,
-          entityId: entry.id,
-          ordinal,
-          metadata: {},
-          state: 'occupied' as const,
-        })),
-      metadata: {},
-    },
-    ...(direct ? [] : [{
-      id: 'river:east',
-      kind: 'river',
-      ordered: true,
-      entries: [{
-        slotId: 'river:east:slot:0',
-        entityId: source.id,
-        ordinal: 0,
-        metadata: {},
-        state: 'occupied' as const,
-      }],
-      metadata: {},
-    }]),
-  ];
-  world.relations = [{
-    id: 'relation:shape',"""
-          if zone_block not in s:
-              if marker not in s: raise SystemExit('test relation marker not found')
-              s=s.replace(marker,zone_block,1)
-          test.write_text(s)
-          PY
-          update_file() {
-            path="$1"
-            message="$2"
+          python scripts/apply_semantic_query_refactor.py
+          for path in \
+            packages/world-language/src/semanticQuery.ts \
+            packages/world-language/src/semanticRegisteredContribution.ts \
+            packages/world-language/src/transactionalFactActions.ts \
+            packages/preset-riichi/src/ix3FirstTenLocalYaku.ts \
+            packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts; do
             sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=agent/ix3-local-yaku-first-ten" --jq .sha)
             content=$(base64 -w0 "$path")
             gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${path}" \
-              -f message="$message" -f content="$content" \
-              -f branch='agent/ix3-local-yaku-first-ten' -f sha="$sha" >/dev/null
-          }
-          update_file packages/world-language/src/semanticQuery.ts 'Index semantic event classes before quantification'
-          update_file packages/world-language/src/semanticRegisteredContribution.ts 'Partition semantic registered rules by source mode'
-          update_file packages/world-language/src/transactionalFactActions.ts 'Scope transactional transfers to their ledger'
-          update_file packages/preset-riichi/src/ix3FirstTenLocalYaku.ts 'Declare semantic rule source modes'
-          update_file packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts 'Model physical source positions in ix3 fixtures'
+              -f message="Apply semantic refactor to ${path}" \
+              -f content="$content" \
+              -f branch='agent/ix3-local-yaku-first-ten' \
+              -f sha="$sha" >/dev/null
+          done
       - uses: actions/setup-node@v4
         with:
           node-version: 22
