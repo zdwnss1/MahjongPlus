@@ -28,7 +28,6 @@ export interface RegisteredContributionEvaluationDefinition {
   id: string;
   version: string;
   title?: string;
-  interpretationActionId: string;
   interpretationTrackId: string;
   fixedContextTrackId: string;
   waitTrackId: string;
@@ -38,10 +37,12 @@ export interface RegisteredContributionEvaluationDefinition {
   minimumQualification: number;
   contributionTrackId?: string;
   qualificationTrackId?: string;
+  evaluationActionId?: string;
   qualificationActionId?: string;
   shapeRelationTypes?: string[];
   qualifiedRelationType?: string;
-  eventType?: string;
+  evaluatedEventType?: string;
+  qualifiedEventType?: string;
 }
 
 const literal = (value: unknown): CoreExpression => ({ kind: 'literal', value });
@@ -71,12 +72,6 @@ const compare = (
 const all = (...values: CoreFormula[]): CoreFormula => ({ kind: 'all', values });
 const any = (...values: CoreFormula[]): CoreFormula => ({ kind: 'any', values });
 const contains = (collection: CoreExpression, value: CoreExpression): CoreFormula => ({ kind: 'contains', collection, value });
-const quantify = (
-  quantifier: 'exists' | 'forall',
-  source: CoreExpression,
-  as: string,
-  where: CoreFormula,
-): CoreFormula => ({ kind: 'quantify', quantifier, source, as, where });
 
 function substitute(value: unknown, replacements: Record<string, CoreExpression>, bound = new Set<string>()): unknown {
   if (Array.isArray(value)) return value.map((entry) => substitute(entry, replacements, bound));
@@ -129,9 +124,12 @@ export function compileRegisteredContributionEvaluationModule(
 
   const contributionTrackId = definition.contributionTrackId ?? `track:registered-contributions:${definition.id}`;
   const qualificationTrackId = definition.qualificationTrackId ?? `track:registered-qualification:${definition.id}`;
+  const evaluationActionId = definition.evaluationActionId ?? `${definition.id}.evaluate`;
   const qualificationActionId = definition.qualificationActionId ?? `${definition.id}.qualify`;
   const qualifiedRelationType = definition.qualifiedRelationType ?? 'can-win-on';
-  const evaluationRewriteId = `${definition.id}.evaluate`;
+  const shapeRelationTypes = definition.shapeRelationTypes ?? ['has-hand-shape'];
+  const evaluationConstraintId = `${definition.id}.evaluation-ready`;
+  const evaluationRewriteId = `${definition.id}.evaluate-records`;
   const qualificationConstraintId = `${definition.id}.qualification-valid`;
 
   const world = variable('world');
@@ -139,8 +137,11 @@ export function compileRegisteredContributionEvaluationModule(
   const relations = path(world, 'relations');
   const events = variable('events');
   const reducers = variable('reducers');
-  const actionId = variable('actionEntityId');
   const actorId = variable('actorId');
+  const currentActionId = variable('actionEntityId');
+  const params = variable('params');
+  const targetInterpretationId = path(params, 'interpretationActionId');
+  const requestedSourceId = path(params, 'sourceEntityId');
   const interpretationIndex = { $module: 'entity-index', id: definition.interpretationTrackId } as unknown as string;
   const fixedIndex = { $module: 'entity-index', id: definition.fixedContextTrackId } as unknown as string;
   const waitIndex = { $module: 'entity-index', id: definition.waitTrackId } as unknown as string;
@@ -148,23 +149,54 @@ export function compileRegisteredContributionEvaluationModule(
   const qualificationIndex = { $module: 'entity-index', id: qualificationTrackId } as unknown as string;
 
   const interpretationRecords = path(entities, interpretationIndex, 'components', 'interpretations', 'records');
-  const interpretation = path(filter(
+  const interpretationMatches = filter(
     interpretationRecords,
     'interpretation',
-    compare('eq', path(variable('interpretation'), 'id'), actionId),
-  ), '0');
+    all(
+      compare('eq', path(variable('interpretation'), 'id'), targetInterpretationId),
+      compare('eq', path(variable('interpretation'), 'actorId'), actorId),
+    ),
+  );
+  const interpretation = path(interpretationMatches, '0');
   const fixedRecords = path(entities, fixedIndex, 'components', 'fixedGroupContexts', 'records');
-  const fixedContext = path(filter(
+  const fixedMatches = filter(
     fixedRecords,
     'fixedContext',
-    compare('eq', path(variable('fixedContext'), 'interpretationActionId'), actionId),
-  ), '0');
+    all(
+      compare('eq', path(variable('fixedContext'), 'interpretationActionId'), targetInterpretationId),
+      compare('eq', path(variable('fixedContext'), 'actorId'), actorId),
+    ),
+  );
+  const fixedContext = path(fixedMatches, '0');
   const waitRecords = path(entities, waitIndex, 'components', 'waitClassifications', 'records');
-  const waitContext = path(filter(
+  const waitMatches = filter(
     waitRecords,
     'waitContext',
-    compare('eq', path(variable('waitContext'), 'interpretationActionId'), actionId),
-  ), '0');
+    all(
+      compare('eq', path(variable('waitContext'), 'interpretationActionId'), targetInterpretationId),
+      compare('eq', path(variable('waitContext'), 'actorId'), actorId),
+    ),
+  );
+  const waitContext = path(waitMatches, '0');
+  const qualificationRecords = path(entities, qualificationIndex, 'components', 'qualifications', 'records');
+  const existingEvaluation = filter(
+    qualificationRecords,
+    'existingQualification',
+    compare('eq', path(variable('existingQualification'), 'interpretationActionId'), targetInterpretationId),
+  );
+  const evaluationConstraint = {
+    id: evaluationConstraintId,
+    variables: [],
+    constraints: [all(
+      compare('eq', aggregate('count', interpretationMatches), literal(1)),
+      compare('eq', aggregate('count', fixedMatches), literal(1)),
+      compare('eq', aggregate('count', waitMatches), literal(1)),
+      compare('eq', aggregate('count', existingEvaluation), literal(0)),
+    )],
+    maxSolutions: 1,
+    maxSteps: 100_000,
+  };
+
   const concealedItems = path(interpretation, 'items');
   const fixedItemIds = distinct(flatten(map(
     path(fixedContext, 'fixedGroups'),
@@ -204,9 +236,9 @@ export function compileRegisteredContributionEvaluationModule(
   }));
   const context = record({
     actorId,
-    interpretationActionId: actionId,
+    interpretationActionId: targetInterpretationId,
+    evaluationActionId: currentActionId,
     interpretation,
-    proposal: path(variable('params'), 'proposal'),
     profileId: path(interpretation, 'profileId'),
     structureId: path(interpretation, 'structureId'),
     source: path(interpretation, 'source'),
@@ -225,7 +257,8 @@ export function compileRegisteredContributionEvaluationModule(
     const matched = substituteFormula(rule.predicate, { context });
     const records = [
       ...rule.contributions.map((contribution, ordinal) => record({
-        interpretationActionId: actionId,
+        interpretationActionId: targetInterpretationId,
+        evaluationActionId: currentActionId,
         actorId,
         ruleId: literal(rule.id),
         ruleTitle: literal(rule.title ?? rule.id),
@@ -237,7 +270,8 @@ export function compileRegisteredContributionEvaluationModule(
         state: literal('proposed'),
       })),
       record({
-        interpretationActionId: actionId,
+        interpretationActionId: targetInterpretationId,
+        evaluationActionId: currentActionId,
         actorId,
         ruleId: literal(rule.id),
         ruleTitle: literal(rule.title ?? rule.id),
@@ -262,7 +296,7 @@ export function compileRegisteredContributionEvaluationModule(
     updatedContributions,
     'qualificationContribution',
     all(
-      compare('eq', path(variable('qualificationContribution'), 'interpretationActionId'), actionId),
+      compare('eq', path(variable('qualificationContribution'), 'interpretationActionId'), targetInterpretationId),
       compare('eq', path(variable('qualificationContribution'), 'dimension'), literal('qualification')),
       compare('eq', path(variable('qualificationContribution'), 'operation'), literal('add')),
       contains(literal(qualificationStages), path(variable('qualificationContribution'), 'stage')),
@@ -275,9 +309,9 @@ export function compileRegisteredContributionEvaluationModule(
     path(variable('qualificationContribution'), 'value'),
   );
   const qualifies = compare('gte', qualificationTotal, literal(definition.minimumQualification));
-  const qualificationRecords = path(entities, qualificationIndex, 'components', 'qualifications', 'records');
   const qualificationRecord = record({
-    interpretationActionId: actionId,
+    interpretationActionId: targetInterpretationId,
+    evaluationActionId: currentActionId,
     actorId,
     sourceEntityId: path(interpretation, 'source', 'sourceEntityId'),
     sourceMode: path(interpretation, 'source', 'mode'),
@@ -303,7 +337,6 @@ export function compileRegisteredContributionEvaluationModule(
     ],
   };
 
-  const params = variable('params');
   const requestedInterpretationId = path(params, 'interpretationActionId');
   const requestedSourceId = path(params, 'sourceEntityId');
   const qualificationMatches = filter(
@@ -316,12 +349,11 @@ export function compileRegisteredContributionEvaluationModule(
       compare('eq', path(variable('qualification'), 'qualifies'), literal(true)),
     ),
   );
-  const shapeRelations = definition.shapeRelationTypes ?? ['has-hand-shape'];
   const shapeMatches = filter(
     relations,
     'shapeRelation',
     all(
-      contains(literal(shapeRelations), path(variable('shapeRelation'), 'type')),
+      contains(literal(shapeRelationTypes), path(variable('shapeRelation'), 'type')),
       compare('eq', path(variable('shapeRelation'), 'source', 'kind'), literal('player')),
       compare('eq', path(variable('shapeRelation'), 'source', 'id'), actorId),
       compare('eq', path(variable('shapeRelation'), 'target', 'kind'), literal('tile')),
@@ -351,80 +383,108 @@ export function compileRegisteredContributionEvaluationModule(
     maxSteps: 100_000,
   };
 
+  const evaluationParameters = {
+    interpretationActionId: { type: 'string' as const, minLength: 1 },
+  };
+  const qualificationParameters = {
+    interpretationActionId: { type: 'string' as const, minLength: 1 },
+    sourceEntityId: { type: 'string' as const, minLength: 1 },
+  };
   return {
     id: definition.id,
     version: definition.version,
     title: definition.title,
-    description: 'Evaluates registered eligibility rules against an accepted physical interpretation and gates win qualification by stage-ordered signed contributions.',
+    description: 'Evaluates registered rules against an accepted physical interpretation, then separately gates win qualification by stage-ordered signed contributions.',
     additions: {
       entities: [
         { id: contributionTrackId, kind: 'fact-track', components: { contributions: { records: [] } } },
         { id: qualificationTrackId, kind: 'fact-track', components: { qualifications: { records: [] } } },
       ],
-      actions: [{
-        id: qualificationActionId,
-        parameters: { interpretationActionId: 'string', sourceEntityId: 'string' },
-        inputSchema: {
-          type: 'object',
-          properties: {
-            interpretationActionId: { type: 'string', minLength: 1 },
-            sourceEntityId: { type: 'string', minLength: 1 },
+      actions: [
+        {
+          id: evaluationActionId,
+          parameters: { interpretationActionId: 'string' },
+          inputSchema: {
+            type: 'object',
+            properties: evaluationParameters,
+            required: ['interpretationActionId'],
+            additionalProperties: false,
           },
-          required: ['interpretationActionId', 'sourceEntityId'],
-          additionalProperties: false,
+          requirements: [
+            { id: `${evaluationActionId}.interpretation`, kind: 'parameter-present', parameter: 'interpretationActionId', message: 'An interpretation action id is required.' },
+            { id: `${evaluationActionId}.ready`, kind: 'core.constraint', programId: evaluationConstraintId, message: 'The accepted interpretation is missing required fixed-group or wait facts, or was already evaluated.' },
+          ],
+          effects: [
+            { kind: 'core.rewrite', programId: evaluationRewriteId },
+            {
+              kind: 'event.emit',
+              eventType: definition.evaluatedEventType ?? 'registered-evaluation.evaluated',
+              subjects: [{ kind: 'actor' }],
+              payload: {
+                interpretationActionId: { kind: 'context', path: 'params.interpretationActionId' },
+                evaluationModuleId: definition.id,
+              },
+            },
+          ],
         },
-        requirements: [
-          { id: `${qualificationActionId}.interpretation`, kind: 'parameter-present', parameter: 'interpretationActionId', message: 'An interpretation action id is required.' },
-          { id: `${qualificationActionId}.source`, kind: 'parameter-present', parameter: 'sourceEntityId', message: 'A physical source entity id is required.' },
-          { id: `${qualificationActionId}.valid`, kind: 'core.constraint', programId: qualificationConstraintId, message: 'The accepted shape does not meet the registered minimum-yaku qualification.' },
-        ],
-        effects: [
-          {
-            kind: 'relation.connect',
-            relationType: qualifiedRelationType,
-            source: { kind: 'actor' },
-            target: {
-              kind: 'entity',
-              entityKind: 'tile',
-              id: { kind: 'context', path: 'params.sourceEntityId' },
-            },
-            metadata: {
-              interpretationActionId: { kind: 'context', path: 'params.interpretationActionId' },
-              evaluationModuleId: definition.id,
-            },
+        {
+          id: qualificationActionId,
+          parameters: { interpretationActionId: 'string', sourceEntityId: 'string' },
+          inputSchema: {
+            type: 'object',
+            properties: qualificationParameters,
+            required: ['interpretationActionId', 'sourceEntityId'],
+            additionalProperties: false,
           },
-          {
-            kind: 'event.emit',
-            eventType: definition.eventType ?? 'registered-evaluation.qualified',
-            subjects: [{ kind: 'actor' }],
-            objects: [{
-              kind: 'entity',
-              entityKind: 'tile',
-              id: { kind: 'context', path: 'params.sourceEntityId' },
-            }],
-            payload: {
-              interpretationActionId: { kind: 'context', path: 'params.interpretationActionId' },
-              evaluationModuleId: definition.id,
+          requirements: [
+            { id: `${qualificationActionId}.interpretation`, kind: 'parameter-present', parameter: 'interpretationActionId', message: 'An interpretation action id is required.' },
+            { id: `${qualificationActionId}.source`, kind: 'parameter-present', parameter: 'sourceEntityId', message: 'A physical source entity id is required.' },
+            { id: `${qualificationActionId}.valid`, kind: 'core.constraint', programId: qualificationConstraintId, message: 'The accepted shape does not meet the registered minimum-yaku qualification.' },
+          ],
+          effects: [
+            {
+              kind: 'relation.connect',
+              relationType: qualifiedRelationType,
+              source: { kind: 'actor' },
+              target: {
+                kind: 'entity',
+                entityKind: 'tile',
+                id: { kind: 'context', path: 'params.sourceEntityId' },
+              },
+              metadata: {
+                interpretationActionId: { kind: 'context', path: 'params.interpretationActionId' },
+                evaluationModuleId: definition.id,
+              },
             },
-          },
-        ],
-      }],
+            {
+              kind: 'event.emit',
+              eventType: definition.qualifiedEventType ?? 'registered-evaluation.qualified',
+              subjects: [{ kind: 'actor' }],
+              objects: [{
+                kind: 'entity',
+                entityKind: 'tile',
+                id: { kind: 'context', path: 'params.sourceEntityId' },
+              }],
+              payload: {
+                interpretationActionId: { kind: 'context', path: 'params.interpretationActionId' },
+                evaluationModuleId: definition.id,
+              },
+            },
+          ],
+        },
+      ],
       corePrograms: {
-        constraints: [qualificationConstraint],
+        constraints: [evaluationConstraint, qualificationConstraint],
         reducers: [],
         rewrites: [evaluationRewrite],
       },
     },
-    patches: [{
-      kind: 'action.effects',
-      actionId: definition.interpretationActionId,
-      placement: 'append',
-      values: [{ kind: 'core.rewrite', programId: evaluationRewriteId }],
-    }],
     artifacts: {
       contributionTrackId,
       qualificationTrackId,
+      evaluationActionId,
       qualificationActionId,
+      evaluationConstraintId,
       evaluationRewriteId,
       qualificationConstraintId,
       registeredRuleIds: definition.rules.map((entry) => entry.id),
