@@ -7,33 +7,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          ref: agent/ix3-local-yaku-first-ten
-      - name: Diagnose semantic pressure-test split
-        shell: bash
-        run: |
-          set -o pipefail
-          python - <<'PY' 2>&1 | tee split.log
-          from pathlib import Path
-          p=Path('packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts')
-          s=p.read_text()
-          nl=chr(10)
-          label="recognizes kakikomi and ordered pon-chi-kan-ron from durable event history"
-          print('label index', s.find("  it('"+label+"', () => {"))
-          print('closing index', s.find(nl+"  }, 90_000);"))
-          print('sequence index', s.find(nl+"    const sequenceActions"))
-          start=s.index("  it('"+label+"', () => {")
-          closing=nl+"  }, 90_000);"
-          end=s.index(closing, start)+len(closing)
-          block=s[start:end]
-          body_start=block.index('() => {')+len('() => {')
-          body_end=block.rfind(nl+"  },")
-          body=block[body_start:body_end]
-          split=body.index(nl+"    const sequenceActions")
-          print('local split', split, 'body end', body_end)
-          PY
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: semantic-test-split-diagnostics
-          path: split.log
+          node-version: 22
+      - run: npm install
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
