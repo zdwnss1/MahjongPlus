@@ -21,22 +21,23 @@ jobs:
           from pathlib import Path
           p=Path('packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts')
           s=p.read_text()
+          nl=chr(10)
           label="recognizes kakikomi and ordered pon-chi-kan-ron from durable event history"
           start=s.index("  it('"+label+"', () => {")
-          closing='\n  }, 90_000);'
+          closing=nl+"  }, 90_000);"
           end=s.index(closing, start)+len(closing)
           block=s[start:end]
           body_start=block.index('() => {')+len('() => {')
-          body_end=block.rfind('\n  },')
+          body_end=block.rfind(nl+"  },")
           body=block[body_start:body_end]
-          split=body.index('\n    const sequenceActions')
+          split=body.index(nl+"    const sequenceActions")
           kakikomi=body[:split]
           sequence=body[split:]
           replacement=(
             "  it('recognizes kakikomi from the uninterrupted first-own-draw window', () => {"
-            +kakikomi+"\n  }, 45_000);\n\n"
+            +kakikomi+nl+"  }, 45_000);"+nl+nl
             +"  it('recognizes ordered pon-chi-kan-ron from durable event history', () => {"
-            +sequence+"\n  }, 60_000);"
+            +sequence+nl+"  }, 60_000);"
           )
           p.write_text(s[:start]+replacement+s[end:])
           PY
