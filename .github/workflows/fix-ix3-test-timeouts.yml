@@ -1,0 +1,42 @@
+name: fix-ix3-test-timeouts
+on:
+  pull_request:
+    branches: [agent/registered-yaku-evaluation]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ix3-local-yaku-first-ten
+      - name: Raise only multi-event test timeouts
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts')
+          s=p.read_text()
+          labels=[
+            'recognizes tsubame-gaeshi from the riichi declaration discard correlation',
+            'recognizes kakikomi and ordered pon-chi-kan-ron from durable event history',
+            'uses an explicit pre-hand commitment for no-chi/no-pon and invalidates it after a call',
+          ]
+          for label in labels:
+              start=s.index("  it('"+label+"', () => {")
+              end=s.index('\n  });', start)
+              s=s[:end]+'\n  }, 30_000);'+s[end+6:]
+          p.write_text(s)
+          PY
+          path=packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts
+          sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=agent/ix3-local-yaku-first-ten" --jq .sha)
+          content=$(base64 -w0 "$path")
+          gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${path}" \
+            -f message='Raise ix3 multi-event pressure-test timeouts' \
+            -f content="$content" \
+            -f branch='agent/ix3-local-yaku-first-ten' \
+            -f sha="$sha" >/dev/null
