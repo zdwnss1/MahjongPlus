@@ -85,26 +85,45 @@ const distinctItemFaces = aggregate('count', distinct(map(
   memberTile(item, 'baseFace'),
 )));
 
-export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = [
-  {
-    id: 'structure.standard-four-groups-pair',
-    title: 'Four groups and one pair',
+function standardProfile(fixedGroupCount: number): PartitionInterpretationProfile {
+  const concealedGroupCount = 4 - fixedGroupCount;
+  const id = fixedGroupCount === 0
+    ? 'structure.standard-four-groups-pair'
+    : `structure.standard-four-groups-pair.fixed-${fixedGroupCount}`;
+  return {
+    id,
+    title: fixedGroupCount === 0
+      ? 'Four groups and one pair'
+      : `Four groups and one pair with ${fixedGroupCount} fixed group${fixedGroupCount === 1 ? '' : 's'}`,
     groupPatterns: [
       { id: 'group.triplet.same-face', size: 3, predicate: sameFace },
       { id: 'group.sequence.same-suit', size: 3, predicate: consecutiveRanks },
       { id: 'group.pair.same-face', size: 2, predicate: sameFace },
     ],
     structures: [{
-      id: 'four-groups-pair',
+      id: fixedGroupCount === 0 ? 'four-groups-pair' : `four-groups-pair.fixed-${fixedGroupCount}`,
       slots: [
-        { id: 'group', count: 4, alternatives: ['group.triplet.same-face', 'group.sequence.same-suit'] },
+        ...(concealedGroupCount > 0
+          ? [{ id: 'group', count: concealedGroupCount, alternatives: ['group.triplet.same-face', 'group.sequence.same-suit'] }]
+          : []),
         { id: 'pair', count: 1, alternatives: ['group.pair.same-face'] },
       ],
     }],
     maxProposals: 24,
     candidateLimit: 24,
     maxSteps: 250_000,
-  },
+  };
+}
+
+export const RIICHI_STANDARD_STRUCTURE_FIXED_GROUP_COUNTS: Record<string, number> = Object.fromEntries(
+  Array.from({ length: 5 }, (_, fixedGroupCount) => {
+    const profile = standardProfile(fixedGroupCount);
+    return [profile.id, fixedGroupCount];
+  }),
+);
+
+export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = [
+  ...Array.from({ length: 5 }, (_, fixedGroupCount) => standardProfile(fixedGroupCount)),
   {
     id: 'structure.seven-pairs',
     title: 'Seven distinct pairs',
@@ -143,7 +162,7 @@ export const RIICHI_HAND_STRUCTURE_PROFILES: PartitionInterpretationProfile[] = 
 
 export const RIICHI_RESPONSE_INTERPRETATION_REGISTRY: PartitionInterpretationRegistryDefinition = {
   id: 'service.riichi-response-hand-interpretation',
-  version: '1.0.0',
+  version: '1.1.0',
   title: 'Riichi response hand interpretation',
   profiles: RIICHI_HAND_STRUCTURE_PROFILES,
   actionId: 'interpretation.submit-response',
