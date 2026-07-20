@@ -14,6 +14,7 @@ export type SemanticDomain =
   | 'zone'
   | 'zone-entry'
   | 'relation'
+  | 'record'
   | 'token';
 
 export interface SemanticBindingProfile {
@@ -29,11 +30,14 @@ export type SemanticCollectionReference =
   | { kind: 'world'; field: 'entities' | 'zones' | 'relations' }
   | { kind: 'binding'; binding: string; domain: SemanticDomain; field: string }
   | { kind: 'module-parameter'; name: string }
+  | { kind: 'module-binding'; name: string }
   | { kind: 'literal'; value: unknown[] };
 
 export type SemanticValueReference =
   | { kind: 'literal'; value: unknown }
   | { kind: 'module-parameter'; name: string }
+  | { kind: 'module-binding'; name: string }
+  | { kind: 'action-parameter'; name: string }
   | { kind: 'context'; field: string }
   | { kind: 'binding'; binding: string; domain: SemanticDomain; field?: string }
   | {
@@ -158,10 +162,7 @@ function worldCollection(
   profile: SemanticBindingProfile,
   environment: SemanticCompileEnvironment,
 ): CoreExpression {
-  return path(
-    path(environment.context, fieldPath(profile, 'context', 'world')),
-    [field],
-  );
+  return path(path(environment.context, fieldPath(profile, 'context', 'world')), [field]);
 }
 
 export function compileSemanticCollection(
@@ -173,6 +174,9 @@ export function compileSemanticCollection(
   if (reference.kind === 'literal') return literal(reference.value);
   if (reference.kind === 'module-parameter') {
     return literal({ $module: 'ref', path: `parameters.${reference.name}` });
+  }
+  if (reference.kind === 'module-binding') {
+    return literal({ $module: 'ref', path: `bindings.${reference.name}` });
   }
   if (reference.kind === 'context') {
     return path(environment.context, fieldPath(profile, 'context', reference.field));
@@ -195,6 +199,15 @@ export function compileSemanticValue(
   if (reference.kind === 'literal') return literal(reference.value);
   if (reference.kind === 'module-parameter') {
     return literal({ $module: 'ref', path: `parameters.${reference.name}` });
+  }
+  if (reference.kind === 'module-binding') {
+    return literal({ $module: 'ref', path: `bindings.${reference.name}` });
+  }
+  if (reference.kind === 'action-parameter') {
+    return path(
+      path(environment.context, fieldPath(profile, 'context', 'params')),
+      [reference.name],
+    );
   }
   if (reference.kind === 'context') {
     return path(environment.context, fieldPath(profile, 'context', reference.field));
@@ -282,28 +295,26 @@ function quantifiedCondition(
     ...bound,
     [bind]: { domain, expression: variable(variableName) },
   };
-  const predicates = [
+  const itemPredicates = [
     eventClassCondition(bind, eventClass, profile, next),
     where ? compileSemanticCondition(where, profile, environment, next) : undefined,
-    continuation ? continuation(next) : undefined,
   ].filter((entry): entry is CoreFormula => Boolean(entry));
-  const itemCondition = all(predicates);
   const quantified: CoreFormula = {
     kind: 'quantify',
     quantifier,
     source,
     as: variableName,
-    where: itemCondition,
+    where: all([
+      ...itemPredicates,
+      continuation ? continuation(next) : undefined,
+    ].filter((entry): entry is CoreFormula => Boolean(entry))),
   };
   if (cardinality !== 'one') return quantified;
   const matches: CoreExpression = {
     kind: 'filter',
     source,
     as: variableName,
-    where: all([
-      eventClassCondition(bind, eventClass, profile, next),
-      where ? compileSemanticCondition(where, profile, environment, next) : undefined,
-    ].filter((entry): entry is CoreFormula => Boolean(entry))),
+    where: all(itemPredicates),
   };
   return all([
     compare('eq', { kind: 'aggregate', operator: 'count', source: matches }, literal(1)),
@@ -323,48 +334,36 @@ function compileEventSequence(
   const recurse = (index: number, current: BoundValues): CoreFormula => {
     const step = steps[index];
     const previous = index > 0 ? steps[index - 1] : undefined;
-    const orderConditions: SemanticCondition[] = [];
-    if (previous) {
-      orderConditions.push({
-        kind: 'compare',
-        operator: 'gt',
-        left: { kind: 'binding', binding: step.bind, domain: 'event', field: 'revision' },
-        right: { kind: 'binding', binding: previous.bind, domain: 'event', field: 'revision' },
-      });
-    }
-    if (index === steps.length - 1 && before) {
-      orderConditions.push({
-        kind: 'compare',
-        operator: 'lt',
-        left: { kind: 'binding', binding: step.bind, domain: 'event', field: 'revision' },
-        right: before,
-      });
-    }
-    const where = all([
-      step.where ? compileSemanticCondition(step.where, profile, environment, {
-        ...current,
-        [step.bind]: { domain: 'event', expression: variable(safeVariable(step.bind)) },
-      }) : undefined,
-      ...orderConditions.map((entry) => compileSemanticCondition(entry, profile, environment, {
-        ...current,
-        [step.bind]: { domain: 'event', expression: variable(safeVariable(step.bind)) },
-      })),
-    ].filter((entry): entry is CoreFormula => Boolean(entry)));
     return quantifiedCondition(
       'exists',
       step.bind,
       'event',
       eventsCollection,
       step.eventClass,
-      { kind: 'boolean', value: true },
+      step.where,
       'any',
       profile,
       environment,
       current,
-      (next) => all([
-        where,
-        index + 1 < steps.length ? recurse(index + 1, next) : { kind: 'boolean', value: true },
-      ]),
+      (next) => {
+        const order: CoreFormula[] = [];
+        if (previous) {
+          order.push(compare(
+            'gt',
+            compileSemanticValue({ kind: 'binding', binding: step.bind, domain: 'event', field: 'revision' }, profile, environment, next),
+            compileSemanticValue({ kind: 'binding', binding: previous.bind, domain: 'event', field: 'revision' }, profile, environment, next),
+          ));
+        }
+        if (index === steps.length - 1 && before) {
+          order.push(compare(
+            'lt',
+            compileSemanticValue({ kind: 'binding', binding: step.bind, domain: 'event', field: 'revision' }, profile, environment, next),
+            compileSemanticValue(before, profile, environment, next),
+          ));
+        }
+        if (index + 1 < steps.length) order.push(recurse(index + 1, next));
+        return all(order);
+      },
     );
   };
   return recurse(0, bound);
@@ -394,10 +393,9 @@ export function compileSemanticCondition(
     );
   }
   if (condition.kind === 'contains') {
-    const collection = 'field' in condition.collection || condition.collection.kind === 'arithmetic'
-      || condition.collection.kind === 'aggregate'
-      ? compileSemanticValue(condition.collection as SemanticValueReference, profile, environment, bound)
-      : compileSemanticCollection(condition.collection as SemanticCollectionReference, profile, environment, bound);
+    const collection = condition.collection.kind === 'world'
+      ? compileSemanticCollection(condition.collection as SemanticCollectionReference, profile, environment, bound)
+      : compileSemanticValue(condition.collection as SemanticValueReference, profile, environment, bound);
     return {
       kind: 'contains',
       collection,
@@ -421,17 +419,10 @@ export function compileSemanticCondition(
   if (condition.kind === 'event-sequence') {
     return compileEventSequence(condition.steps, condition.before, profile, environment, bound);
   }
+
   const zones = worldCollection('zones', profile, environment);
   const zoneName = safeVariable('position-zone');
   const entryName = safeVariable('position-entry');
-  const zoneBound = {
-    ...bound,
-    'position-zone': { domain: 'zone' as const, expression: variable(zoneName) },
-  };
-  const entryBound = {
-    ...zoneBound,
-    'position-entry': { domain: 'zone-entry' as const, expression: variable(entryName) },
-  };
   const zonePredicates: CoreFormula[] = [];
   if (condition.zoneId) {
     zonePredicates.push(compare(
