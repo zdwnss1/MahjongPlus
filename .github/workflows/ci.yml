@@ -1,3 +1,4 @@
+# One-shot semantic query optimization migration; restored after it commits source changes.
 name: ci
 on:
   push:
@@ -47,12 +48,16 @@ jobs:
     where ? compileSemanticCondition(where, profile, environment, next) : undefined,
   ].filter((entry): entry is CoreFormula => Boolean(entry));
 """
-          if old not in s: raise SystemExit('quantified source block not found')
-          query.write_text(s.replace(old,new,1))
+          if old in s:
+              s=s.replace(old,new,1)
+          elif new not in s:
+              raise SystemExit('quantified source block not found')
+          query.write_text(s)
 
           registered=Path('packages/world-language/src/semanticRegisteredContribution.ts')
           s=registered.read_text()
-          s=s.replace("""export interface SemanticRegisteredEligibilityRule {
+          if 'sourceModes?: string[];' not in s:
+              s=s.replace("""export interface SemanticRegisteredEligibilityRule {
   id: string;
   title?: string;
 """, """export interface SemanticRegisteredEligibilityRule {
@@ -60,17 +65,18 @@ jobs:
   title?: string;
   sourceModes?: string[];
 """, 1)
-          s=s.replace("""  semanticProfile: SemanticBindingProfile;
+          if 'sourceMode?: string;' not in s:
+              s=s.replace("""  semanticProfile: SemanticBindingProfile;
   rules: SemanticRegisteredEligibilityRule[];
 }""", """  semanticProfile: SemanticBindingProfile;
   sourceMode?: string;
   rules: SemanticRegisteredEligibilityRule[];
 }""", 1)
-          s=s.replace("""  const rules = definition.rules.map((rule) => ({""", """  const selectedRules = definition.rules.filter((rule) =>
+          if 'const selectedRules = definition.rules.filter' not in s:
+              s=s.replace("""  const rules = definition.rules.map((rule) => ({""", """  const selectedRules = definition.rules.filter((rule) =>
     !definition.sourceMode || !rule.sourceModes || rule.sourceModes.includes(definition.sourceMode));
   const rules = selectedRules.map((rule) => ({""", 1)
-          s=s.replace("""    semanticQueryRuleIds: definition.rules.map((rule) => rule.id),""", """    semanticQueryRuleIds: selectedRules.map((rule) => rule.id),
-    semanticSourceMode: definition.sourceMode,""", 1)
+          s=s.replace("semanticQueryRuleIds: definition.rules.map((rule) => rule.id),", "semanticQueryRuleIds: selectedRules.map((rule) => rule.id),\n    semanticSourceMode: definition.sourceMode,")
           registered.write_text(s)
 
           ix3=Path('packages/preset-riichi/src/ix3FirstTenLocalYaku.ts')
@@ -85,11 +91,13 @@ jobs:
               if modes not in s:
                   if title not in s: raise SystemExit(f'missing title {title}')
                   s=s.replace(title,modes,1)
-          s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
+          if "sourceMode: 'response'" not in s:
+              s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
     interpretationTrackId: 'track:hand-interpretations',""", """    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
     sourceMode: 'response',
     interpretationTrackId: 'track:hand-interpretations',""", 1)
-          s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
+          if "sourceMode: 'direct'" not in s:
+              s=s.replace("""    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
     interpretationTrackId: 'track:direct-hand-interpretations',""", """    semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
     sourceMode: 'direct',
     interpretationTrackId: 'track:direct-hand-interpretations',""", 1)
@@ -97,25 +105,29 @@ jobs:
 
           tx=Path('packages/world-language/src/transactionalFactActions.ts')
           s=tx.read_text()
-          s=s.replace("""    const transferRecords = list(...transfers.map((transfer) => record({
+          old_records="""    const transferRecords = list(...transfers.map((transfer) => record({
       from: transfer.from,
       to: transfer.to,
       amount: transfer.amount,
-    })));""", """    const transferRecords = list(...transfers.map((transfer) => record({
+    })));"""
+          new_records="""    const transferRecords = list(...transfers.map((transfer) => record({
       ledger: literal(transfer.definition.ledger),
       from: transfer.from,
       to: transfer.to,
       amount: transfer.amount,
-    })));""", 1)
-          s=s.replace("""      const relevantTransfers = filter(
+    })));"""
+          if old_records in s: s=s.replace(old_records,new_records,1)
+          old_filter="""      const relevantTransfers = filter(
         transferRecords,
         'transfer',
         { kind: 'boolean', value: true },
-      );""", """      const relevantTransfers = filter(
+      );"""
+          new_filter="""      const relevantTransfers = filter(
         transferRecords,
         'transfer',
         compare('eq', path(variable('transfer'), 'ledger'), literal(ledgerBinding)),
-      );""", 1)
+      );"""
+          if old_filter in s: s=s.replace(old_filter,new_filter,1)
           tx.write_text(s)
 
           test=Path('packages/preset-riichi/test/ix3FirstTenLocalYaku.test.ts')
