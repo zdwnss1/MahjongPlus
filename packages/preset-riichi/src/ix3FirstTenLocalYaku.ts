@@ -128,6 +128,7 @@ export const IX3_FIRST_TEN_REGISTERED_RULES: SemanticRegisteredEligibilityRule[]
   {
     id: 'local.tsumo-sen',
     title: '自摸セン',
+    sourceModes: ['direct'],
     query: {
       bindings: [SOURCE_EVENT_BINDING],
       where: {
@@ -149,6 +150,7 @@ export const IX3_FIRST_TEN_REGISTERED_RULES: SemanticRegisteredEligibilityRule[]
   {
     id: 'local.bunbun-riichi',
     title: 'ブンブン立直',
+    sourceModes: ['direct'],
     query: {
       bindings: [SOURCE_EVENT_BINDING],
       where: {
@@ -170,6 +172,7 @@ export const IX3_FIRST_TEN_REGISTERED_RULES: SemanticRegisteredEligibilityRule[]
   {
     id: 'local.tsubame-gaeshi',
     title: '燕返し',
+    sourceModes: ['response'],
     query: {
       bindings: [SOURCE_EVENT_BINDING],
       where: {
@@ -201,6 +204,7 @@ export const IX3_FIRST_TEN_REGISTERED_RULES: SemanticRegisteredEligibilityRule[]
   {
     id: 'local.kakikomi',
     title: '書込',
+    sourceModes: ['direct'],
     query: {
       bindings: [SOURCE_EVENT_BINDING, SOURCE_TILE_BINDING],
       where: {
@@ -277,6 +281,7 @@ export const IX3_FIRST_TEN_REGISTERED_RULES: SemanticRegisteredEligibilityRule[]
   {
     id: 'local.pon-chi-kan-ron',
     title: 'ポンチーカンロン',
+    sourceModes: ['response'],
     query: {
       bindings: [SOURCE_EVENT_BINDING],
       where: {
@@ -342,6 +347,7 @@ export const IX3_FIRST_TEN_RESPONSE_EVALUATION_MODULE =
     id: 'service.ix3-first-ten-response-evaluation', version: '2.0.0',
     title: 'ix3 local yaku 1–10 response evaluation',
     semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
+    sourceMode: 'response',
     interpretationTrackId: 'track:hand-interpretations',
     fixedContextTrackId: 'track:fixed-meld-interpretation-contexts',
     waitTrackId: 'track:wait-classifications',
@@ -361,6 +367,7 @@ export const IX3_FIRST_TEN_DIRECT_EVALUATION_MODULE =
     id: 'service.ix3-first-ten-direct-evaluation', version: '2.0.0',
     title: 'ix3 local yaku 1–10 direct evaluation',
     semanticProfile: RIICHI_SEMANTIC_BINDING_PROFILE,
+    sourceMode: 'direct',
     interpretationTrackId: 'track:direct-hand-interpretations',
     fixedContextTrackId: 'track:direct-fixed-meld-contexts',
     waitTrackId: 'track:direct-wait-classifications',
