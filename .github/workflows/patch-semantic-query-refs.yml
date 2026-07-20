@@ -1,0 +1,96 @@
+name: patch-semantic-query-refs
+on:
+  pull_request:
+    branches: [agent/registered-yaku-evaluation]
+permissions:
+  contents: write
+jobs:
+  patch:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/ix3-local-yaku-first-ten
+      - name: Add parameter binding and record references
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p=Path('packages/world-language/src/semanticQuery.ts')
+          s=p.read_text()
+          s=s.replace("  | 'relation'\n  | 'token';", "  | 'relation'\n  | 'record'\n  | 'token';")
+          s=s.replace("  | { kind: 'module-parameter'; name: string }\n  | { kind: 'literal'; value: unknown[] };", "  | { kind: 'module-parameter'; name: string }\n  | { kind: 'module-binding'; name: string }\n  | { kind: 'literal'; value: unknown[] };")
+          s=s.replace("  | { kind: 'module-parameter'; name: string }\n  | { kind: 'context'; field: string }", "  | { kind: 'module-parameter'; name: string }\n  | { kind: 'module-binding'; name: string }\n  | { kind: 'action-parameter'; name: string }\n  | { kind: 'context'; field: string }", 1)
+          s=s.replace("  if (reference.kind === 'module-parameter') {\n    return literal({ $module: 'ref', path: `parameters.${reference.name}` });\n  }\n  if (reference.kind === 'context') {", "  if (reference.kind === 'module-parameter') {\n    return literal({ $module: 'ref', path: `parameters.${reference.name}` });\n  }\n  if (reference.kind === 'module-binding') {\n    return literal({ $module: 'ref', path: `bindings.${reference.name}` });\n  }\n  if (reference.kind === 'context') {", 1)
+          old="""  if (reference.kind === 'module-parameter') {
+    return literal({ $module: 'ref', path: `parameters.${reference.name}` });
+  }
+  if (reference.kind === 'context') {
+    return path(environment.context, fieldPath(profile, 'context', reference.field));
+  }
+"""
+          new="""  if (reference.kind === 'module-parameter') {
+    return literal({ $module: 'ref', path: `parameters.${reference.name}` });
+  }
+  if (reference.kind === 'module-binding') {
+    return literal({ $module: 'ref', path: `bindings.${reference.name}` });
+  }
+  if (reference.kind === 'action-parameter') {
+    return path(
+      path(environment.context, fieldPath(profile, 'context', 'params')),
+      [reference.name],
+    );
+  }
+  if (reference.kind === 'context') {
+    return path(environment.context, fieldPath(profile, 'context', reference.field));
+  }
+"""
+          if old not in s: raise SystemExit('value module parameter block not found')
+          s=s.replace(old,new,1)
+          old_contains="""    const collection = 'field' in condition.collection || condition.collection.kind === 'arithmetic'
+      || condition.collection.kind === 'aggregate'
+      ? compileSemanticValue(condition.collection as SemanticValueReference, profile, environment, bound)
+      : compileSemanticCollection(condition.collection as SemanticCollectionReference, profile, environment, bound);
+"""
+          new_contains="""    const collection = condition.collection.kind === 'world'
+      ? compileSemanticCollection(condition.collection as SemanticCollectionReference, profile, environment, bound)
+      : compileSemanticValue(condition.collection as SemanticValueReference, profile, environment, bound);
+"""
+          if old_contains not in s: raise SystemExit('contains block not found')
+          s=s.replace(old_contains,new_contains,1)
+          p.write_text(s)
+
+          profile=Path('packages/preset-riichi/src/riichiSemanticBindingProfile.ts')
+          t=profile.read_text()
+          marker="""    relation: {
+      type: ['type'],
+      'source-kind': ['source', 'kind'],
+      'source-id': ['source', 'id'],
+      'target-kind': ['target', 'kind'],
+      'target-id': ['target', 'id'],
+    },
+"""
+          replacement=marker+"""    record: {
+      'subject-id': ['subjectId'],
+      state: ['state'],
+      'allowed-modes': ['allowedModes'],
+      'declaration-kind': ['declarationType'],
+    },
+"""
+          if marker not in t: raise SystemExit('relation profile block not found')
+          profile.write_text(t.replace(marker,replacement,1))
+          PY
+          update_file() {
+            path="$1"
+            message="$2"
+            sha=$(gh api "repos/${GITHUB_REPOSITORY}/contents/${path}?ref=agent/ix3-local-yaku-first-ten" --jq .sha)
+            content=$(base64 -w0 "$path")
+            gh api --method PUT "repos/${GITHUB_REPOSITORY}/contents/${path}" \
+              -f message="$message" -f content="$content" \
+              -f branch='agent/ix3-local-yaku-first-ten' -f sha="$sha" >/dev/null
+          }
+          update_file packages/world-language/src/semanticQuery.ts 'Add semantic parameter binding and record references'
+          update_file packages/preset-riichi/src/riichiSemanticBindingProfile.ts 'Map generic policy record fields'
