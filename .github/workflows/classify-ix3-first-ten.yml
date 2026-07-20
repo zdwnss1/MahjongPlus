@@ -1,7 +1,7 @@
 name: classify-ix3-first-ten
 on:
-  pull_request:
-    branches: [agent/registered-yaku-evaluation]
+  push:
+    branches: [agent/ix3-local-yaku-first-ten]
 permissions:
   contents: write
 jobs:
