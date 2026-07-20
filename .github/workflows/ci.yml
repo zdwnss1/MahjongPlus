@@ -11,6 +11,21 @@ jobs:
         with:
           node-version: 22
       - run: npm install
-      - run: npm run typecheck
+      - name: Capture typecheck output
+        shell: bash
+        run: |
+          set +e
+          npm run typecheck > typecheck.log 2>&1
+          echo $? > typecheck.exit
+          exit 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: registered-evaluation-typecheck
+          path: typecheck.log
+      - name: Enforce typecheck result
+        shell: bash
+        run: |
+          cat typecheck.log
+          exit "$(cat typecheck.exit)"
       - run: npm test
       - run: npm run build
