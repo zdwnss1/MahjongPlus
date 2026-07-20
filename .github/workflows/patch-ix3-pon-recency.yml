@@ -1,7 +1,7 @@
 name: patch-ix3-pon-recency
 on:
-  push:
-    branches: [agent/ix3-local-yaku-first-ten]
+  pull_request:
+    branches: [agent/registered-yaku-evaluation]
 permissions:
   contents: write
 jobs:
