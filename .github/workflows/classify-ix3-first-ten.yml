@@ -1,3 +1,4 @@
+# Temporary one-shot workflow; removed after the catalog patch is committed.
 name: classify-ix3-first-ten
 on:
   push:
